@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF电子阅读器</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>PDF 电子阅读器</h1>
+            <div class="controls">
+                <button id="zoomOut" class="control-btn">−</button>
+                <span id="zoomLevel">100%</span>
+                <button id="zoomIn" class="control-btn">+</button>
+                <button id="toggleSidebar" class="control-btn">☰</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div id="sidebar" class="sidebar">
+                <h3>页面导航</h3>
+                <div id="thumbnailContainer" class="thumbnail-container"></div>
+            </div>
+
+            <div class="viewer-container">
+                <div id="dropZone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <svg class="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        <h2>拖拽PDF文件到此处</h2>
+                        <p>或者点击选择文件</p>
+                        <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                        <button id="selectFile" class="select-file-btn">选择文件</button>
+                    </div>
+                </div>
+
+                <div id="pdfViewer" class="pdf-viewer" style="display: none;">
+                    <div class="pdf-controls">
+                        <button id="prevPage" class="nav-btn">上一页</button>
+                        <span id="pageInfo">第 1 页 / 共 1 页</span>
+                        <button id="nextPage" class="nav-btn">下一页</button>
+                    </div>
+                    <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
+                </div>
+
+                <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>正在加载PDF...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="lib/build/pdf.mjs" type="module"></script>
+    <script src="js/main.js" type="module"></script>
+</body>
+</html>
