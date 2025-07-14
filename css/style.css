@@ -212,8 +212,13 @@ body {
     background: #ffffff;
     margin: 1rem;
     border-radius: 12px;
-    overflow: auto;
+    overflow: hidden;
     box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+}
+
+.pdf-content-container {
+    flex: 1;
+    overflow: auto;
 }
 
 .pdf-controls {
@@ -260,6 +265,16 @@ body {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     background: white;
     max-width: calc(100% - 4rem);
+    transition: opacity 0.12s ease-in-out;
+    opacity: 1;
+}
+
+.pdf-canvas.fade-out {
+    opacity: 0;
+}
+
+.pdf-canvas.fade-in {
+    opacity: 1;
 }
 
 /* 加载遮罩 */

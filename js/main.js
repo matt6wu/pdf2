@@ -7,10 +7,13 @@ class PDFReader {
         this.pdfDoc = null;
         this.pageNum = 1;
         this.pageCount = 0;
-        this.scale = 1.0;
+        this.scale = 1.5; // 默认150%缩放
         this.canvas = document.getElementById('pdfCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.sidebarOpen = true;
+        this.wheelTimeout = null;
+        this.scrollAccumulator = 0;
+        this.scrollThreshold = 100; // 滚动累积阈值
         
         this.initializeElements();
         this.setupEventListeners();
@@ -21,6 +24,7 @@ class PDFReader {
         this.fileInput = document.getElementById('fileInput');
         this.selectFileBtn = document.getElementById('selectFile');
         this.pdfViewer = document.getElementById('pdfViewer');
+        this.pdfContainer = document.getElementById('pdfContainer');
         this.loadingOverlay = document.getElementById('loadingOverlay');
         this.sidebar = document.getElementById('sidebar');
         this.thumbnailContainer = document.getElementById('thumbnailContainer');
@@ -56,6 +60,9 @@ class PDFReader {
 
         // 键盘快捷键
         document.addEventListener('keydown', (e) => this.handleKeyPress(e));
+        
+        // 滚轮翻页功能
+        this.pdfContainer.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
     }
 
     handleFileSelect(event) {
@@ -105,6 +112,7 @@ class PDFReader {
             
             this.hideLoading();
             this.showPDFViewer();
+            this.updateZoomLevel(); // 显示当前缩放级别
             await this.renderPage(1);
             this.generateThumbnails();
             this.updatePageInfo();
@@ -117,12 +125,26 @@ class PDFReader {
         }
     }
 
-    async renderPage(pageNumber) {
+    async renderPage(pageNumber, showTransition = false, scrollToTop = false) {
         if (!this.pdfDoc || pageNumber < 1 || pageNumber > this.pageCount) {
             return;
         }
 
         try {
+            // 如果需要滚动到顶部，在渲染前立即设置
+            if (scrollToTop && this.pdfContainer) {
+                this.pdfContainer.scrollTop = 0;
+            }
+            
+            // 添加淡出效果
+            if (showTransition) {
+                this.canvas.classList.add('fade-out');
+                this.canvas.classList.remove('fade-in');
+                
+                // 等待淡出动画完成
+                await new Promise(resolve => setTimeout(resolve, 60));
+            }
+            
             const page = await this.pdfDoc.getPage(pageNumber);
             const viewport = page.getViewport({ scale: this.scale });
             
@@ -148,8 +170,16 @@ class PDFReader {
             this.updateNavigationButtons();
             this.highlightCurrentThumbnail();
             
+            // 添加淡入效果
+            if (showTransition) {
+                this.canvas.classList.remove('fade-out');
+                this.canvas.classList.add('fade-in');
+            }
+            
         } catch (error) {
             console.error('渲染页面失败:', error);
+            this.canvas.classList.remove('fade-out');
+            this.canvas.classList.add('fade-in');
         }
     }
 
@@ -170,7 +200,9 @@ class PDFReader {
             thumbnailItem.appendChild(canvas);
             thumbnailItem.appendChild(info);
             
-            thumbnailItem.addEventListener('click', () => this.renderPage(i));
+            thumbnailItem.addEventListener('click', () => {
+                this.renderPage(i, false, true);
+            });
             
             this.thumbnailContainer.appendChild(thumbnailItem);
             
@@ -203,13 +235,13 @@ class PDFReader {
 
     goToPreviousPage() {
         if (this.pageNum > 1) {
-            this.renderPage(this.pageNum - 1);
+            this.renderPage(this.pageNum - 1, true, true);
         }
     }
 
     goToNextPage() {
         if (this.pageNum < this.pageCount) {
-            this.renderPage(this.pageNum + 1);
+            this.renderPage(this.pageNum + 1, true, true);
         }
     }
 
@@ -230,9 +262,78 @@ class PDFReader {
     }
 
     resetZoom() {
-        this.scale = 1.0;
+        this.scale = 1.5; // 重置到默认150%
         this.renderPage(this.pageNum);
         this.updateZoomLevel();
+    }
+
+    async handleWheel(event) {
+        // 如果按住Ctrl/Cmd键，则为缩放功能
+        if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            const zoomFactor = 0.1;
+            const delta = event.deltaY;
+            
+            if (delta < 0) {
+                // 向上滚动，放大
+                this.scale = Math.min(this.scale + zoomFactor, 4.0);
+            } else {
+                // 向下滚动，缩小
+                this.scale = Math.max(this.scale - zoomFactor, 0.3);
+            }
+            
+            this.renderPage(this.pageNum);
+            this.updateZoomLevel();
+            return;
+        }
+        
+        // 检查容器的滚动状态
+        const container = this.pdfContainer;
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        const delta = event.deltaY;
+        
+        // 检查是否在滚动边界
+        const atTop = scrollTop <= 0;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - 5; // 5px容错
+        
+        // 只有在边界时才考虑翻页
+        if ((delta < 0 && atTop && this.pageNum > 1) || 
+            (delta > 0 && atBottom && this.pageNum < this.pageCount)) {
+            // 在边界且有可翻页时，阻止默认滚动并翻页
+            event.preventDefault();
+            
+            // 累积滚动量进行翻页
+            this.scrollAccumulator += delta;
+            
+            if (this.wheelTimeout) {
+                clearTimeout(this.wheelTimeout);
+            }
+            
+            if (Math.abs(this.scrollAccumulator) >= 50) { // 较小的阈值用于边界翻页
+                if (this.scrollAccumulator > 0 && this.pageNum < this.pageCount) {
+                    // 向下翻页，新页面从顶部开始
+                    container.scrollTop = 0;
+                    await this.renderPage(this.pageNum + 1, true, true);
+                } else if (this.scrollAccumulator < 0 && this.pageNum > 1) {
+                    // 向上翻页，先翻页再设置底部位置
+                    await this.renderPage(this.pageNum - 1, true);
+                    // 使用双重 requestAnimationFrame 确保页面完全渲染
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            container.scrollTop = container.scrollHeight - container.clientHeight;
+                        });
+                    });
+                }
+                this.scrollAccumulator = 0;
+            }
+            
+            this.wheelTimeout = setTimeout(() => {
+                this.scrollAccumulator = 0;
+            }, 300);
+        }
+        // 否则允许正常的页面内滚动（不阻止默认行为）
     }
 
 
