@@ -148,13 +148,19 @@ class PDFReader {
             const page = await this.pdfDoc.getPage(pageNumber);
             const viewport = page.getViewport({ scale: this.scale });
             
-            // 设置canvas尺寸
-            this.canvas.width = viewport.width;
-            this.canvas.height = viewport.height;
+            // 获取设备像素密度，确保高DPI显示器上的清晰度
+            const devicePixelRatio = window.devicePixelRatio || 1;
             
-            // 设置canvas显示尺寸，确保清晰度
+            // 设置canvas实际分辨率（考虑设备像素密度）
+            this.canvas.width = viewport.width * devicePixelRatio;
+            this.canvas.height = viewport.height * devicePixelRatio;
+            
+            // 设置canvas显示尺寸（CSS尺寸）
             this.canvas.style.width = viewport.width + 'px';
             this.canvas.style.height = viewport.height + 'px';
+            
+            // 重置变换矩阵并缩放绘图上下文以匹配设备像素密度
+            this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
             
             const renderContext = {
                 canvasContext: this.ctx,
@@ -162,7 +168,7 @@ class PDFReader {
             };
             
             // 清空画布
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.clearRect(0, 0, viewport.width, viewport.height);
             
             await page.render(renderContext).promise;
             this.pageNum = pageNumber;
@@ -211,10 +217,21 @@ class PDFReader {
                 const page = await this.pdfDoc.getPage(i);
                 const viewport = page.getViewport({ scale: 0.2 });
                 
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
+                // 获取设备像素密度，确保缩略图清晰
+                const devicePixelRatio = window.devicePixelRatio || 1;
+                
+                // 设置canvas实际分辨率
+                canvas.width = viewport.width * devicePixelRatio;
+                canvas.height = viewport.height * devicePixelRatio;
+                
+                // 设置canvas显示尺寸
+                canvas.style.width = viewport.width + 'px';
+                canvas.style.height = viewport.height + 'px';
                 
                 const context = canvas.getContext('2d');
+                // 缩放上下文以匹配设备像素密度
+                context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+                
                 await page.render({
                     canvasContext: context,
                     viewport: viewport
@@ -231,6 +248,15 @@ class PDFReader {
         thumbnails.forEach((item, index) => {
             item.classList.toggle('active', index + 1 === this.pageNum);
         });
+        
+        // 滚动侧边栏到当前页面缩略图
+        const currentThumbnail = thumbnails[this.pageNum - 1];
+        if (currentThumbnail) {
+            currentThumbnail.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }
     }
 
     goToPreviousPage() {
