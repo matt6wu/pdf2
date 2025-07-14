@@ -17,6 +17,7 @@ class PDFReader {
         
         this.initializeElements();
         this.setupEventListeners();
+        this.setupWindowResize();
     }
 
     initializeElements() {
@@ -36,6 +37,7 @@ class PDFReader {
         this.zoomOutBtn = document.getElementById('zoomOut');
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
         this.resizeHandle = document.getElementById('resizeHandle');
+        this.zoomSlider = document.getElementById('zoomSlider');
     }
 
     setupEventListeners() {
@@ -55,6 +57,10 @@ class PDFReader {
         // 缩放按钮
         this.zoomInBtn.addEventListener('click', () => this.zoomIn());
         this.zoomOutBtn.addEventListener('click', () => this.zoomOut());
+        
+        // 缩放滑块
+        this.zoomSlider.addEventListener('input', (e) => this.handleSliderZoom(e));
+        this.zoomSlider.addEventListener('change', (e) => this.handleSliderZoom(e));
 
         // 侧边栏切换
         this.toggleSidebarBtn.addEventListener('click', () => this.toggleSidebar());
@@ -173,6 +179,48 @@ class PDFReader {
         }
     }
 
+    setupWindowResize() {
+        // 监听窗口大小变化，自动调整PDF显示
+        window.addEventListener('resize', () => {
+            if (this.pdfDoc && this.pageNum) {
+                // 延迟调整以避免过于频繁的重新渲染
+                clearTimeout(this.resizeTimeout);
+                this.resizeTimeout = setTimeout(() => {
+                    this.adjustPDFScale();
+                    this.renderPage(this.pageNum);
+                }, 300);
+            }
+        });
+    }
+
+    adjustPDFScale() {
+        if (!this.pdfDoc) return;
+        
+        const viewerContainer = this.pdfContainer;
+        const availableWidth = viewerContainer.clientWidth - 80; // 减去边距
+        
+        // 获取PDF原始尺寸
+        this.pdfDoc.getPage(this.pageNum).then(page => {
+            const viewport = page.getViewport({ scale: 1.0 });
+            const pdfWidth = viewport.width;
+            
+            // 主要基于宽度来计算缩放比例，让PDF自然适应容器宽度
+            let newScale = availableWidth / pdfWidth;
+            
+            // 限制缩放范围，但允许更大的范围
+            newScale = Math.max(0.3, Math.min(3.0, newScale));
+            
+            // 只有当缩放变化较大时才更新
+            if (Math.abs(this.scale - newScale) > 0.1) {
+                this.scale = newScale;
+                this.updateZoomLevel();
+                this.updateSliderPosition();
+            }
+        }).catch(error => {
+            console.error('调整PDF缩放失败:', error);
+        });
+    }
+
     handleFileSelect(event) {
         const file = event.target.files[0];
         if (file && file.type === 'application/pdf') {
@@ -220,7 +268,11 @@ class PDFReader {
             
             this.hideLoading();
             this.showPDFViewer();
+            
+            // 首次加载时自动调整缩放
+            this.adjustPDFScale();
             this.updateZoomLevel(); // 显示当前缩放级别
+            this.updateSliderPosition(); // 更新滑块位置
             await this.renderPage(1);
             this.generateThumbnails();
             this.updatePageInfo();
@@ -383,16 +435,29 @@ class PDFReader {
         this.scale = Math.min(this.scale + 0.25, 4.0);
         this.renderPage(this.pageNum);
         this.updateZoomLevel();
+        this.updateSliderPosition();
     }
 
     zoomOut() {
         this.scale = Math.max(this.scale - 0.25, 0.3);
         this.renderPage(this.pageNum);
         this.updateZoomLevel();
+        this.updateSliderPosition();
+    }
+
+    handleSliderZoom(event) {
+        const sliderValue = parseInt(event.target.value);
+        this.scale = sliderValue / 100;
+        this.renderPage(this.pageNum);
+        this.updateZoomLevel();
     }
 
     updateZoomLevel() {
         this.zoomLevel.textContent = `${Math.round(this.scale * 100)}%`;
+    }
+
+    updateSliderPosition() {
+        this.zoomSlider.value = Math.round(this.scale * 100);
     }
 
     resetZoom() {
