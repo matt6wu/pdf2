@@ -35,6 +35,7 @@ class PDFReader {
         this.zoomInBtn = document.getElementById('zoomIn');
         this.zoomOutBtn = document.getElementById('zoomOut');
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
+        this.resizeHandle = document.getElementById('resizeHandle');
     }
 
     setupEventListeners() {
@@ -63,6 +64,113 @@ class PDFReader {
         
         // 滚轮翻页功能
         this.pdfContainer.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+        
+        // 侧边栏调整大小
+        this.setupSidebarResize();
+    }
+
+    setupSidebarResize() {
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+
+        this.resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = this.sidebar.offsetWidth;
+            this.resizeHandle.classList.add('resizing');
+            
+            // 防止选中文本
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const deltaX = e.clientX - startX;
+            let newWidth = startWidth + deltaX;
+            
+            // 限制最小和最大宽度
+            newWidth = Math.max(200, Math.min(400, newWidth));
+            
+            this.sidebar.style.width = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                this.resizeHandle.classList.remove('resizing');
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                
+                // 触发缩略图大小调整 - 添加延迟确保DOM更新完成
+                setTimeout(() => {
+                    this.adjustThumbnailSize();
+                }, 100);
+            }
+        });
+    }
+
+    adjustThumbnailSize() {
+        if (!this.pdfDoc) return;
+        
+        const sidebarWidth = this.sidebar.offsetWidth;
+        const padding = 32; // 1rem padding * 2 + border + margin
+        const availableWidth = sidebarWidth - padding;
+        
+        // 根据可用宽度计算合适的缩放比例
+        let newScale;
+        if (availableWidth < 150) {
+            newScale = 0.15;
+        } else if (availableWidth < 200) {
+            newScale = 0.2;
+        } else if (availableWidth < 250) {
+            newScale = 0.25;
+        } else if (availableWidth < 300) {
+            newScale = 0.3;
+        } else {
+            newScale = 0.35;
+        }
+        
+        // 重新渲染所有缩略图
+        this.regenerateThumbnails(newScale);
+    }
+
+    async regenerateThumbnails(scale) {
+        const thumbnails = this.thumbnailContainer.querySelectorAll('.thumbnail-canvas');
+        
+        for (let i = 0; i < thumbnails.length; i++) {
+            const canvas = thumbnails[i];
+            const pageNumber = i + 1;
+            
+            try {
+                const page = await this.pdfDoc.getPage(pageNumber);
+                const viewport = page.getViewport({ scale: scale });
+                
+                // 获取设备像素密度
+                const devicePixelRatio = window.devicePixelRatio || 1;
+                
+                // 设置canvas实际分辨率
+                canvas.width = viewport.width * devicePixelRatio;
+                canvas.height = viewport.height * devicePixelRatio;
+                
+                // 设置canvas显示尺寸
+                canvas.style.width = viewport.width + 'px';
+                canvas.style.height = viewport.height + 'px';
+                
+                const context = canvas.getContext('2d');
+                context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+                
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                }).promise;
+                
+            } catch (error) {
+                console.error(`重新生成第${pageNumber}页缩略图失败:`, error);
+            }
+        }
     }
 
     handleFileSelect(event) {

@@ -77,12 +77,38 @@ body {
 
 /* 侧边栏样式 */
 .sidebar {
-    width: 220px;
+    width: 250px;
+    min-width: 200px;
+    max-width: 400px;
     background: #f8f9fa;
     border-right: 1px solid #e9ecef;
     padding: 1rem;
     overflow-y: auto;
     transition: transform 0.3s ease;
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* 拖拽手柄 */
+.resize-handle {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    width: 4px;
+    height: 100%;
+    background: transparent;
+    cursor: col-resize;
+    z-index: 100;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+}
+
+.resize-handle:hover {
+    background: rgba(0, 123, 255, 0.5);
+}
+
+.resize-handle.resizing {
+    background: rgba(0, 123, 255, 0.8);
 }
 
 .sidebar.collapsed {
