@@ -18,6 +18,7 @@ class PDFReader {
         this.isPaused = false; // 暂停状态
         this.currentAudio = null; // 当前播放的音频对象
         this.hoverTimeout = null; // 悬停防抖定时器
+        this.autoNextPage = true; // 自动翻页开关
         
         this.initializeElements();
         this.setupEventListeners();
@@ -461,12 +462,14 @@ class PDFReader {
 
     goToPreviousPage() {
         if (this.pageNum > 1) {
+            this.stopReading(); // 手动翻页停止朗读
             this.renderPage(this.pageNum - 1, true, true);
         }
     }
 
     goToNextPage() {
         if (this.pageNum < this.pageCount) {
+            this.stopReading(); // 手动翻页停止朗读
             this.renderPage(this.pageNum + 1, true, true);
         }
     }
@@ -803,14 +806,14 @@ class PDFReader {
             if (currentSegment.length + sentence.length <= maxLength) {
                 currentSegment += sentence;
             } else {
-                if (currentSegment.trim() && currentSegment.trim().length > 20) {
+                if (currentSegment.trim() && currentSegment.trim().length > 10) {
                     segments.push(currentSegment.trim());
                 }
                 currentSegment = sentence;
             }
         }
         
-        if (currentSegment.trim() && currentSegment.trim().length > 20) {
+        if (currentSegment.trim() && currentSegment.trim().length > 10) {
             segments.push(currentSegment.trim());
         }
         
@@ -818,13 +821,23 @@ class PDFReader {
         if (segments.length === 0 && text.length > maxLength) {
             for (let i = 0; i < text.length; i += maxLength) {
                 const segment = text.substring(i, i + maxLength);
-                if (segment.trim().length > 20) {
+                if (segment.trim().length > 10) {
                     segments.push(segment.trim());
                 }
             }
         }
         
-        return segments.length > 0 ? segments : [text];
+        // 如果仍然没有分段，直接返回原文本
+        if (segments.length === 0 && text.trim().length > 0) {
+            segments.push(text.trim());
+        }
+        
+        console.log(`📊 文本分段结果: ${segments.length} 段`);
+        segments.forEach((segment, index) => {
+            console.log(`段 ${index + 1}: "${segment.substring(0, 50)}${segment.length > 50 ? '...' : ''}" (${segment.length} 字符)`);
+        });
+        
+        return segments;
     }
 
     async startReading() {
@@ -845,10 +858,19 @@ class PDFReader {
             
             console.log(`📝 页面文本提取完成，长度: ${pageText.length} 字符`);
             
-            if (!pageText) {
-                console.log('❌ 当前页面没有可朗读的文本内容');
-                alert('当前页面没有可朗读的文本内容');
-                return;
+            if (!pageText || pageText.length < 10) {
+                console.log('⚠️ 当前页面没有足够的文本内容，尝试跳到下一页');
+                
+                // 如果是空白页且不是最后一页，自动跳到下一页继续朗读
+                if (this.pageNum < this.pageCount) {
+                    console.log('📖 跳过空白页，继续朗读下一页');
+                    await this.autoGoToNextPageAndRead();
+                    return;
+                } else {
+                    console.log('❌ 已是最后一页且没有文本内容');
+                    alert('当前页面没有可朗读的文本内容');
+                    return;
+                }
             }
             
             // 智能分段
@@ -903,12 +925,20 @@ class PDFReader {
                 const audioData = await audioPromise;
                 await this.playAudioData(audioData);
                 
+                console.log(`✅ 第 ${i+1}/${segments.length} 段播放完成`);
+                
                 // 段间短暂停顿（除了最后一段，且未暂停时）
                 if (i < segments.length - 1 && this.isReading && !this.isPaused) {
                     await new Promise(resolve => setTimeout(resolve, 200));
                 }
             } catch (error) {
                 console.error(`❌ 第 ${i+1} 段播放失败:`, error);
+                
+                // 如果是前几段失败，尝试重启TTS服务
+                if (i < 2) {
+                    console.log('🔄 检测到早期段落失败，可能需要重启TTS服务');
+                }
+                
                 // 继续播放下一段，不中断整个朗读
                 continue;
             }
@@ -917,28 +947,50 @@ class PDFReader {
         // 全部播放完成
         if (this.isReading) {
             console.log('✅ 所有段落播放完成');
-            this.stopReading();
+            
+            // 检查是否需要自动翻页
+            if (this.autoNextPage && this.pageNum < this.pageCount) {
+                console.log('📖 自动翻页到下一页并继续朗读');
+                await this.autoGoToNextPageAndRead();
+            } else {
+                console.log('📚 已读完最后一页或自动翻页已关闭');
+                this.stopReading();
+            }
         }
     }
 
-    async loadSegmentAudio(text) {
+    async loadSegmentAudio(text, retryCount = 3) {
         // 调用外部TTS API加载音频数据
         const ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(text)}&speaker_id=p335`;
         
-        console.log('📡 正在生成语音...');
-        const response = await fetch(ttsUrl, {
-            signal: AbortSignal.timeout(30000) // 30秒超时
-        });
-        
-        if (!response.ok) {
-            throw new Error(`TTS API请求失败: ${response.status}`);
+        for (let attempt = 1; attempt <= retryCount; attempt++) {
+            try {
+                console.log(`📡 正在生成语音 (尝试 ${attempt}/${retryCount})...`);
+                const response = await fetch(ttsUrl, {
+                    signal: AbortSignal.timeout(30000) // 30秒超时
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`TTS API请求失败: ${response.status}`);
+                }
+                
+                // 获取音频数据
+                const audioBlob = await response.blob();
+                console.log(`🎵 音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+                
+                return audioBlob;
+                
+            } catch (error) {
+                console.warn(`⚠️ 第 ${attempt} 次尝试失败:`, error.message);
+                
+                if (attempt === retryCount) {
+                    throw error;
+                }
+                
+                // 重试前等待一段时间
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
         }
-        
-        // 获取音频数据
-        const audioBlob = await response.blob();
-        console.log(`🎵 音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
-        
-        return audioBlob;
     }
 
     async playAudioData(audioBlob) {
@@ -1017,6 +1069,63 @@ class PDFReader {
         this.isPaused = false;
         this.updateReadButton();
         console.log('🔇 朗读功能已停止');
+    }
+
+    async autoGoToNextPageAndRead() {
+        try {
+            // 翻到下一页
+            if (this.pageNum < this.pageCount) {
+                await this.renderPage(this.pageNum + 1, true, true);
+                
+                // 短暂延迟，确保页面渲染完成
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // 继续朗读新页面
+                if (this.isReading) {
+                    await this.continueReadingCurrentPage();
+                }
+            } else {
+                console.log('📚 已到达最后一页，停止朗读');
+                this.stopReading();
+            }
+        } catch (error) {
+            console.error('❌ 自动翻页失败:', error);
+            this.stopReading();
+        }
+    }
+
+    async continueReadingCurrentPage() {
+        try {
+            const page = await this.pdfDoc.getPage(this.pageNum);
+            const textContent = await page.getTextContent();
+            
+            const pageText = textContent.items
+                .map(item => item.str)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            
+            console.log(`📄 第 ${this.pageNum} 页文本提取完成，长度: ${pageText.length} 字符`);
+            
+            if (pageText && pageText.length >= 10) {
+                console.log(`📖 开始朗读第 ${this.pageNum} 页`);
+                const segments = this.splitTextIntelligently(pageText);
+                await this.playSegments(segments);
+            } else {
+                console.log('⚠️ 当前页面没有足够文本内容，跳过并继续下一页');
+                
+                // 如果是空白页且不是最后一页，递归继续下一页
+                if (this.pageNum < this.pageCount && this.isReading) {
+                    await this.autoGoToNextPageAndRead();
+                } else {
+                    console.log('📚 已到达最后一页或没有更多内容，停止朗读');
+                    this.stopReading();
+                }
+            }
+        } catch (error) {
+            console.error('❌ 继续朗读失败:', error);
+            this.stopReading();
+        }
     }
 
     updateReadButton() {
