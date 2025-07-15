@@ -743,6 +743,44 @@ class PDFReader {
         }
     }
 
+    // 智能分段函数
+    splitTextIntelligently(text, maxLength = 400) {
+        const segments = [];
+        let currentSegment = '';
+        
+        // 按句子分割（以句号、问号、感叹号为界）
+        const sentences = text.split(/([.!?]+\s+)/);
+        
+        for (let i = 0; i < sentences.length; i++) {
+            const sentence = sentences[i];
+            
+            if (currentSegment.length + sentence.length <= maxLength) {
+                currentSegment += sentence;
+            } else {
+                if (currentSegment.trim() && currentSegment.trim().length > 20) {
+                    segments.push(currentSegment.trim());
+                }
+                currentSegment = sentence;
+            }
+        }
+        
+        if (currentSegment.trim() && currentSegment.trim().length > 20) {
+            segments.push(currentSegment.trim());
+        }
+        
+        // 如果没有分段成功，按长度强制分段
+        if (segments.length === 0 && text.length > maxLength) {
+            for (let i = 0; i < text.length; i += maxLength) {
+                const segment = text.substring(i, i + maxLength);
+                if (segment.trim().length > 20) {
+                    segments.push(segment.trim());
+                }
+            }
+        }
+        
+        return segments.length > 0 ? segments : [text];
+    }
+
     async startReading() {
         if (!this.pdfDoc || this.isReading) return;
         
@@ -760,7 +798,6 @@ class PDFReader {
                 .trim();
             
             console.log(`📝 页面文本提取完成，长度: ${pageText.length} 字符`);
-            console.log(`📖 文本内容预览: ${pageText.substring(0, 100)}${pageText.length > 100 ? '...' : ''}`);
             
             if (!pageText) {
                 console.log('❌ 当前页面没有可朗读的文本内容');
@@ -768,55 +805,15 @@ class PDFReader {
                 return;
             }
             
+            // 智能分段
+            const segments = this.splitTextIntelligently(pageText);
+            console.log(`📄 文本已分为 ${segments.length} 段进行朗读`);
+            
             this.isReading = true;
             this.updateReadButton();
             
-            // 调用外部TTS API
-            const ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(pageText)}&speaker_id=p335`;
-            console.log(`🌐 调用TTS API: ${ttsUrl.substring(0, 100)}...`);
-            
-            try {
-                console.log('📡 正在发送TTS请求...');
-                const response = await fetch(ttsUrl);
-                
-                if (!response.ok) {
-                    console.log(`❌ TTS API请求失败，状态码: ${response.status}`);
-                    throw new Error(`TTS API请求失败: ${response.status}`);
-                }
-                
-                console.log('✅ TTS API响应成功，正在获取音频数据...');
-                
-                // 获取音频数据
-                const audioBlob = await response.blob();
-                console.log(`🎵 音频数据获取完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
-                
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                // 创建音频对象并播放
-                this.currentAudio = new Audio(audioUrl);
-                
-                this.currentAudio.onended = () => {
-                    console.log('🎵 音频播放完成');
-                    this.stopReading();
-                    URL.revokeObjectURL(audioUrl);
-                };
-                
-                this.currentAudio.onerror = () => {
-                    console.log('❌ 音频播放错误');
-                    this.stopReading();
-                    URL.revokeObjectURL(audioUrl);
-                    alert('音频播放错误，请重试');
-                };
-                
-                console.log('🎵 开始播放音频...');
-                await this.currentAudio.play();
-                console.log('✅ 音频播放已启动');
-                
-            } catch (apiError) {
-                console.error('❌ TTS API调用失败:', apiError);
-                alert('朗读服务暂时不可用，请稍后重试');
-                this.stopReading();
-            }
+            // 逐段播放
+            await this.playSegments(segments);
             
         } catch (error) {
             console.error('❌ 朗读失败:', error);
@@ -824,6 +821,94 @@ class PDFReader {
             this.stopReading();
         }
     }
+
+    async playSegments(segments) {
+        let nextAudioPromise = null;
+        
+        for (let i = 0; i < segments.length; i++) {
+            if (!this.isReading) break; // 检查是否被用户停止
+            
+            console.log(`🎵 播放第 ${i+1}/${segments.length} 段`);
+            
+            // 如果有预加载的音频，使用它；否则现场加载
+            let audioPromise;
+            if (nextAudioPromise) {
+                audioPromise = nextAudioPromise;
+                nextAudioPromise = null;
+            } else {
+                audioPromise = this.loadSegmentAudio(segments[i]);
+            }
+            
+            // 开始预加载下一段（如果存在）
+            if (i + 1 < segments.length && this.isReading) {
+                nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+                console.log(`⚡ 开始预加载第 ${i+2} 段`);
+            }
+            
+            try {
+                // 等待当前段音频加载完成并播放
+                const audioData = await audioPromise;
+                await this.playAudioData(audioData);
+                
+                // 段间短暂停顿（除了最后一段）
+                if (i < segments.length - 1 && this.isReading) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            } catch (error) {
+                console.error(`❌ 第 ${i+1} 段播放失败:`, error);
+                // 继续播放下一段，不中断整个朗读
+                continue;
+            }
+        }
+        
+        // 全部播放完成
+        if (this.isReading) {
+            console.log('✅ 所有段落播放完成');
+            this.stopReading();
+        }
+    }
+
+    async loadSegmentAudio(text) {
+        // 调用外部TTS API加载音频数据
+        const ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(text)}&speaker_id=p335`;
+        
+        console.log('📡 正在生成语音...');
+        const response = await fetch(ttsUrl, {
+            signal: AbortSignal.timeout(30000) // 30秒超时
+        });
+        
+        if (!response.ok) {
+            throw new Error(`TTS API请求失败: ${response.status}`);
+        }
+        
+        // 获取音频数据
+        const audioBlob = await response.blob();
+        console.log(`🎵 音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+        
+        return audioBlob;
+    }
+
+    async playAudioData(audioBlob) {
+        return new Promise((resolve, reject) => {
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            
+            audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                resolve();
+            };
+            
+            audio.onerror = () => {
+                URL.revokeObjectURL(audioUrl);
+                reject(new Error('音频播放错误'));
+            };
+            
+            // 存储当前音频引用用于停止控制
+            this.currentAudio = audio;
+            audio.play().catch(reject);
+        });
+    }
+
 
     // 测试方法：提取当前页面的文本内容
     async testTextExtraction() {
