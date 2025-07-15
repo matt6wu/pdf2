@@ -38,6 +38,7 @@ class PDFReader {
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
         this.resizeHandle = document.getElementById('resizeHandle');
         this.zoomSlider = document.getElementById('zoomSlider');
+        this.progressBar = document.getElementById('progressBar');
     }
 
     setupEventListeners() {
@@ -589,6 +590,14 @@ class PDFReader {
 
     updatePageInfo() {
         this.pageInfo.textContent = `第 ${this.pageNum} 页 / 共 ${this.pageCount} 页`;
+        this.updateProgressBar();
+    }
+
+    updateProgressBar() {
+        if (this.progressBar && this.pageCount > 0) {
+            const progress = (this.pageNum / this.pageCount) * 100;
+            this.progressBar.style.width = `${progress}%`;
+        }
     }
 
     updateNavigationButtons() {
