@@ -154,6 +154,64 @@ body {
     border-color: #d39e00;
 }
 
+#stopReadingBtn {
+    background: #dc3545;
+    border-color: #dc3545;
+    font-size: 1.1rem;
+    opacity: 0.6;
+    transition: all 0.3s ease;
+}
+
+#stopReadingBtn:hover {
+    background: #c82333;
+    border-color: #bd2130;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+    opacity: 1;
+}
+
+#stopReadingBtn.active {
+    opacity: 1;
+    background: #dc3545;
+    border-color: #dc3545;
+}
+
+#stopReadingBtn.active:hover {
+    background: #c82333;
+    border-color: #bd2130;
+}
+
+#goToReadingPageBtn {
+    background: #28a745;
+    border-color: #28a745;
+    font-size: 1.1rem;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+#goToReadingPageBtn:hover {
+    background: #218838;
+    border-color: #1e7e34;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+}
+
+#goToReadingPageBtn.pulse {
+    animation: pulse-green 2s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+    }
+}
+
 @keyframes pulse {
     0% {
         box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);

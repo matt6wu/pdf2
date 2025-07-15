@@ -19,6 +19,7 @@ class PDFReader {
         this.currentAudio = null; // 当前播放的音频对象
         this.hoverTimeout = null; // 悬停防抖定时器
         this.autoNextPage = true; // 自动翻页开关
+        this.readingPageNum = 1; // 当前朗读的页码
         
         this.initializeElements();
         this.setupEventListeners();
@@ -47,6 +48,14 @@ class PDFReader {
         this.homeBtn = document.getElementById('homeBtn');
         this.uploadBtn = document.getElementById('uploadBtn');
         this.readAloudBtn = document.getElementById('readAloudBtn');
+        this.stopReadingBtn = document.getElementById('stopReadingBtn');
+        this.goToReadingPageBtn = document.getElementById('goToReadingPageBtn');
+        
+        // 调试：检查按钮是否正确获取
+        console.log('🔍 按钮初始化检查:');
+        console.log('readAloudBtn:', this.readAloudBtn);
+        console.log('stopReadingBtn:', this.stopReadingBtn);
+        console.log('goToReadingPageBtn:', this.goToReadingPageBtn);
         this.uploadModal = document.getElementById('uploadModal');
         this.uploadDropZone = document.getElementById('uploadDropZone');
         this.uploadFileInput = document.getElementById('uploadFileInput');
@@ -88,6 +97,12 @@ class PDFReader {
         
         // 备用点击事件（防止悬停失效）
         this.readAloudBtn.addEventListener('click', () => this.toggleReadAloud());
+        
+        // 停止朗读按钮 - 只支持点击
+        this.stopReadingBtn.addEventListener('click', () => this.forceStopReading());
+        
+        // 回到朗读页面按钮 - 只支持点击
+        this.goToReadingPageBtn.addEventListener('click', () => this.goToReadingPage());
         
         // 上传按钮和弹框
         this.uploadBtn.addEventListener('click', () => this.showUploadModal());
@@ -376,6 +391,7 @@ class PDFReader {
             this.updatePageInfo();
             this.updateNavigationButtons();
             this.highlightCurrentThumbnail();
+            this.updateGoToReadingPageButton(); // 更新回到朗读页面按钮状态
             
             // 添加淡入效果
             if (showTransition) {
@@ -878,7 +894,10 @@ class PDFReader {
             console.log(`📄 文本已分为 ${segments.length} 段进行朗读`);
             
             this.isReading = true;
+            this.readingPageNum = this.pageNum; // 记录开始朗读的页码
             this.updateReadButton();
+            this.updateStopButton();
+            this.updateGoToReadingPageButton();
             
             // 逐段播放
             await this.playSegments(segments);
@@ -1068,6 +1087,8 @@ class PDFReader {
         this.isReading = false;
         this.isPaused = false;
         this.updateReadButton();
+        this.updateStopButton();
+        this.updateGoToReadingPageButton();
         console.log('🔇 朗读功能已停止');
     }
 
@@ -1082,6 +1103,8 @@ class PDFReader {
                 
                 // 继续朗读新页面
                 if (this.isReading) {
+                    this.readingPageNum = this.pageNum; // 更新朗读页码
+                    this.updateGoToReadingPageButton();
                     await this.continueReadingCurrentPage();
                 }
             } else {
@@ -1128,6 +1151,18 @@ class PDFReader {
         }
     }
 
+    forceStopReading() {
+        console.log('🛑 强制停止朗读 - 用户点击停止按钮');
+        this.stopReading();
+    }
+
+    goToReadingPage() {
+        if (this.isReading && this.readingPageNum !== this.pageNum) {
+            console.log(`📖 跳转到朗读页面: 第 ${this.readingPageNum} 页`);
+            this.renderPage(this.readingPageNum, true, true);
+        }
+    }
+
     updateReadButton() {
         if (this.isReading && this.isPaused) {
             this.readAloudBtn.innerHTML = '▶️';
@@ -1143,6 +1178,40 @@ class PDFReader {
             this.readAloudBtn.innerHTML = '🔊';
             this.readAloudBtn.title = '朗读当前页';
             this.readAloudBtn.classList.remove('reading', 'paused');
+        }
+    }
+
+    updateStopButton() {
+        if (this.isReading) {
+            this.stopReadingBtn.classList.add('active');
+            this.stopReadingBtn.title = '停止朗读';
+        } else {
+            this.stopReadingBtn.classList.remove('active');
+            this.stopReadingBtn.title = '停止朗读';
+        }
+    }
+
+    updateGoToReadingPageButton() {
+        console.log(`🔍 updateGoToReadingPageButton - isReading: ${this.isReading}, readingPageNum: ${this.readingPageNum}, currentPageNum: ${this.pageNum}`);
+        
+        if (this.isReading) {
+            this.goToReadingPageBtn.style.display = 'inline-block';
+            this.goToReadingPageBtn.innerHTML = `📖 P${this.readingPageNum}`;
+            this.goToReadingPageBtn.title = `回到朗读页面（第 ${this.readingPageNum} 页）`;
+            console.log(`✅ 显示回到朗读页面按钮: P${this.readingPageNum}`);
+            
+            // 如果当前页面不是朗读页面，添加脉冲效果
+            if (this.pageNum !== this.readingPageNum) {
+                this.goToReadingPageBtn.classList.add('pulse');
+                console.log(`💫 添加脉冲效果 - 当前页 ${this.pageNum} != 朗读页 ${this.readingPageNum}`);
+            } else {
+                this.goToReadingPageBtn.classList.remove('pulse');
+                console.log(`📍 移除脉冲效果 - 在朗读页面`);
+            }
+        } else {
+            this.goToReadingPageBtn.style.display = 'none';
+            this.goToReadingPageBtn.classList.remove('pulse');
+            console.log(`❌ 隐藏回到朗读页面按钮 - 未在朗读`);
         }
     }
 }
