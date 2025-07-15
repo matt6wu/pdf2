@@ -13,7 +13,7 @@
 - **缩略图导航**: 左侧边栏显示所有页面缩略图，点击快速跳转
 - **自动滚动定位**: 跳转页面时缩略图侧边栏自动滚动到当前页面
 - **自适应缩略图**: 侧边栏宽度改变时缩略图自动调整大小
-- **智能朗读功能**: 集成TTS语音合成，支持当前页面文本朗读
+- **智能朗读功能**: 集成TTS语音合成，支持分段朗读、暂停恢复、悬停触发
 
 ### 交互体验
 - **自然滚动**: 页面内自然滚动，到达边界时自动翻页
@@ -25,7 +25,7 @@
   - 按钮控制
   - 交互式滑块拖拽缩放
   - 侧边栏宽度拖拽调节
-  - 一键朗读当前页面
+  - 智能朗读（悬停触发、暂停恢复、分段播放）
 
 ### 界面设计
 - **现代白色主题**: 简洁清爽的界面设计
@@ -33,7 +33,7 @@
 - **可调节侧边栏**: 默认250px宽度，可拖拽调整200px-400px
 - **缩略图居中对齐**: 自适应大小，宽度变化时自动调整缩放
 - **交互式缩放滑块**: 120px蓝色滑块，悬停效果，支持Chrome/Firefox
-- **智能朗读按钮**: 位于工具栏的🔊按钮，支持TTS语音合成
+- **智能朗读按钮**: 支持悬停触发、状态切换（🔊/⏸️/▶️）、视觉反馈
 - **加载动画**: 平滑的加载过渡效果
 
 ## 技术实现
@@ -97,19 +97,34 @@
 
 8. **智能朗读系统**:
    ```javascript
-   // 提取PDF页面文本
-   const page = await this.pdfDoc.getPage(this.pageNum);
-   const textContent = await page.getTextContent();
-   const pageText = textContent.items.map(item => item.str).join(' ');
+   // 智能文本分段（400字符/段，按句子边界）
+   splitTextIntelligently(text, maxLength = 400) {
+       const sentences = text.split(/([.!?]+\s+)/);
+       // 按句子边界智能分段...
+   }
    
-   // 调用TTS API
-   const ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(pageText)}&speaker_id=p335`;
-   const response = await fetch(ttsUrl);
-   const audioBlob = await response.blob();
+   // 预加载机制：播放当前段时加载下一段
+   async playSegments(segments) {
+       let nextAudioPromise = null;
+       for (let i = 0; i < segments.length; i++) {
+           // 使用预加载的音频或现场加载
+           const audioData = await (nextAudioPromise || this.loadSegmentAudio(segments[i]));
+           
+           // 开始预加载下一段
+           if (i + 1 < segments.length) {
+               nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+           }
+           
+           await this.playAudioData(audioData);
+       }
+   }
    
-   // 播放生成的音频
-   const audio = new Audio(URL.createObjectURL(audioBlob));
-   await audio.play();
+   // 悬停触发机制
+   handleHoverTrigger() {
+       this.hoverTimeout = setTimeout(() => {
+           this.toggleReadAloud(); // 300ms延迟防误触
+       }, 300);
+   }
    ```
 
 ### 文件结构
@@ -163,11 +178,13 @@ pm2 stop pdf-reader     # 停止服务
 4. **侧边栏调节**:
    - 拖拽右边缘调整宽度（200px-400px）
    - 缩略图自动适应大小
-5. **朗读功能**:
-   - 点击🔊按钮朗读当前页面
-   - 朗读时按钮变为⏹️停止按钮
-   - 自动提取页面文本并生成语音
-   - 支持暂停和重新开始
+5. **智能朗读功能**:
+   - 悬停🔊按钮300ms自动开始朗读（也可点击）
+   - 智能分段播放，避免长文本超时问题
+   - 预加载下一段，实现无缝连续播放
+   - 支持暂停⏸️和恢复▶️，保持播放进度
+   - 状态指示：🔊开始 → ⏸️暂停 → ▶️恢复
+   - 翻页时自动停止当前朗读
 
 ### 快捷键
 - `←/→` 或 `↑/↓`: 翻页
@@ -177,12 +194,19 @@ pm2 stop pdf-reader     # 停止服务
 
 ## 最新更新
 
+### v2.2 - 智能朗读系统升级
+- 智能文本分段播放（400字符/段，按句子边界分割）
+- 预加载机制：播放当前段时并行加载下一段，实现无缝播放
+- 暂停/恢复功能：⏸️暂停保持进度，▶️一键恢复
+- 悬停触发：鼠标悬停300ms自动播放/暂停/恢复
+- 性能优化：解决长文本504超时，减少TTS服务器负载
+- 视觉反馈：三种按钮状态（🔊/⏸️/▶️）+ 悬停动画效果
+
 ### v2.1 - 智能朗读功能
 - 添加PDF文本提取和TTS语音合成功能
 - 集成外部TTS API服务 (https://tts.mattwu.cc/)
 - 实现CORS跨域支持，解决浏览器安全限制
 - 添加朗读状态指示和控制按钮
-- 支持朗读过程中的暂停和停止操作
 - 翻页时自动停止当前朗读
 
 ### v2.0 - 响应式缩放和交互优化

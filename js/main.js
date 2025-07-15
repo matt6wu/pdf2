@@ -15,7 +15,9 @@ class PDFReader {
         this.scrollAccumulator = 0;
         this.scrollThreshold = 100; // 滚动累积阈值
         this.isReading = false; // 朗读状态
+        this.isPaused = false; // 暂停状态
         this.currentAudio = null; // 当前播放的音频对象
+        this.hoverTimeout = null; // 悬停防抖定时器
         
         this.initializeElements();
         this.setupEventListeners();
@@ -79,7 +81,11 @@ class PDFReader {
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
         
-        // 朗读按钮
+        // 朗读按钮 - 悬停触发
+        this.readAloudBtn.addEventListener('mouseenter', () => this.handleHoverTrigger());
+        this.readAloudBtn.addEventListener('mouseleave', () => this.clearHoverTimeout());
+        
+        // 备用点击事件（防止悬停失效）
         this.readAloudBtn.addEventListener('click', () => this.toggleReadAloud());
         
         // 上传按钮和弹框
@@ -735,11 +741,51 @@ class PDFReader {
         }
     }
 
+    handleHoverTrigger() {
+        // 清除之前的定时器
+        this.clearHoverTimeout();
+        
+        // 短暂延迟，避免意外触发
+        this.hoverTimeout = setTimeout(() => {
+            this.toggleReadAloud();
+        }, 300); // 300ms 延迟
+    }
+
+    clearHoverTimeout() {
+        if (this.hoverTimeout) {
+            clearTimeout(this.hoverTimeout);
+            this.hoverTimeout = null;
+        }
+    }
+
     async toggleReadAloud() {
-        if (this.isReading) {
-            this.stopReading();
+        if (this.isReading && !this.isPaused) {
+            // 正在朗读 -> 暂停
+            this.pauseReading();
+        } else if (this.isReading && this.isPaused) {
+            // 已暂停 -> 恢复
+            this.resumeReading();
         } else {
+            // 未开始 -> 开始朗读
             await this.startReading();
+        }
+    }
+
+    pauseReading() {
+        if (this.currentAudio && !this.currentAudio.paused) {
+            this.currentAudio.pause();
+            this.isPaused = true;
+            this.updateReadButton();
+            console.log('⏸️ 朗读已暂停');
+        }
+    }
+
+    resumeReading() {
+        if (this.currentAudio && this.currentAudio.paused) {
+            this.currentAudio.play();
+            this.isPaused = false;
+            this.updateReadButton();
+            console.log('▶️ 朗读已恢复');
         }
     }
 
@@ -828,6 +874,13 @@ class PDFReader {
         for (let i = 0; i < segments.length; i++) {
             if (!this.isReading) break; // 检查是否被用户停止
             
+            // 等待暂停状态结束
+            while (this.isPaused && this.isReading) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            if (!this.isReading) break; // 再次检查是否被停止
+            
             console.log(`🎵 播放第 ${i+1}/${segments.length} 段`);
             
             // 如果有预加载的音频，使用它；否则现场加载
@@ -839,8 +892,8 @@ class PDFReader {
                 audioPromise = this.loadSegmentAudio(segments[i]);
             }
             
-            // 开始预加载下一段（如果存在）
-            if (i + 1 < segments.length && this.isReading) {
+            // 开始预加载下一段（如果存在且未暂停）
+            if (i + 1 < segments.length && this.isReading && !this.isPaused) {
                 nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                 console.log(`⚡ 开始预加载第 ${i+2} 段`);
             }
@@ -850,8 +903,8 @@ class PDFReader {
                 const audioData = await audioPromise;
                 await this.playAudioData(audioData);
                 
-                // 段间短暂停顿（除了最后一段）
-                if (i < segments.length - 1 && this.isReading) {
+                // 段间短暂停顿（除了最后一段，且未暂停时）
+                if (i < segments.length - 1 && this.isReading && !this.isPaused) {
                     await new Promise(resolve => setTimeout(resolve, 200));
                 }
             } catch (error) {
@@ -961,19 +1014,26 @@ class PDFReader {
             this.currentAudio = null;
         }
         this.isReading = false;
+        this.isPaused = false;
         this.updateReadButton();
         console.log('🔇 朗读功能已停止');
     }
 
     updateReadButton() {
-        if (this.isReading) {
-            this.readAloudBtn.innerHTML = '⏹️';
-            this.readAloudBtn.title = '停止朗读';
+        if (this.isReading && this.isPaused) {
+            this.readAloudBtn.innerHTML = '▶️';
+            this.readAloudBtn.title = '继续朗读';
             this.readAloudBtn.classList.add('reading');
+            this.readAloudBtn.classList.add('paused');
+        } else if (this.isReading) {
+            this.readAloudBtn.innerHTML = '⏸️';
+            this.readAloudBtn.title = '暂停朗读';
+            this.readAloudBtn.classList.add('reading');
+            this.readAloudBtn.classList.remove('paused');
         } else {
             this.readAloudBtn.innerHTML = '🔊';
             this.readAloudBtn.title = '朗读当前页';
-            this.readAloudBtn.classList.remove('reading');
+            this.readAloudBtn.classList.remove('reading', 'paused');
         }
     }
 }

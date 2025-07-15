@@ -128,6 +128,8 @@ body {
 #readAloudBtn:hover {
     background: #138496;
     border-color: #117a8b;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(23, 162, 184, 0.4);
 }
 
 #readAloudBtn.reading {
@@ -139,6 +141,17 @@ body {
 #readAloudBtn.reading:hover {
     background: #c82333;
     border-color: #bd2130;
+}
+
+#readAloudBtn.paused {
+    background: #ffc107;
+    border-color: #ffc107;
+    animation: none;
+}
+
+#readAloudBtn.paused:hover {
+    background: #e0a800;
+    border-color: #d39e00;
 }
 
 @keyframes pulse {
