@@ -14,6 +14,8 @@ class PDFReader {
         this.wheelTimeout = null;
         this.scrollAccumulator = 0;
         this.scrollThreshold = 100; // 滚动累积阈值
+        this.isReading = false; // 朗读状态
+        this.currentAudio = null; // 当前播放的音频对象
         
         this.initializeElements();
         this.setupEventListeners();
@@ -39,6 +41,14 @@ class PDFReader {
         this.resizeHandle = document.getElementById('resizeHandle');
         this.zoomSlider = document.getElementById('zoomSlider');
         this.progressBar = document.getElementById('progressBar');
+        this.homeBtn = document.getElementById('homeBtn');
+        this.uploadBtn = document.getElementById('uploadBtn');
+        this.readAloudBtn = document.getElementById('readAloudBtn');
+        this.uploadModal = document.getElementById('uploadModal');
+        this.uploadDropZone = document.getElementById('uploadDropZone');
+        this.uploadFileInput = document.getElementById('uploadFileInput');
+        this.selectUploadFile = document.getElementById('selectUploadFile');
+        this.closeUploadModal = document.getElementById('closeUploadModal');
     }
 
     setupEventListeners() {
@@ -65,6 +75,29 @@ class PDFReader {
 
         // 侧边栏切换
         this.toggleSidebarBtn.addEventListener('click', () => this.toggleSidebar());
+        
+        // 首页按钮
+        this.homeBtn.addEventListener('click', () => this.goHome());
+        
+        // 朗读按钮
+        this.readAloudBtn.addEventListener('click', () => this.toggleReadAloud());
+        
+        // 上传按钮和弹框
+        this.uploadBtn.addEventListener('click', () => this.showUploadModal());
+        this.closeUploadModal.addEventListener('click', () => this.hideUploadModal());
+        this.uploadModal.addEventListener('click', (e) => {
+            if (e.target === this.uploadModal) this.hideUploadModal();
+        });
+        
+        // 上传弹框文件选择
+        this.selectUploadFile.addEventListener('click', () => this.uploadFileInput.click());
+        this.uploadFileInput.addEventListener('change', (e) => this.handleUploadFileSelect(e));
+        
+        // 上传弹框拖拽
+        this.uploadDropZone.addEventListener('dragover', (e) => this.handleUploadDragOver(e));
+        this.uploadDropZone.addEventListener('dragleave', (e) => this.handleUploadDragLeave(e));
+        this.uploadDropZone.addEventListener('drop', (e) => this.handleUploadDrop(e));
+        this.uploadDropZone.addEventListener('click', () => this.uploadFileInput.click());
 
         // 键盘快捷键
         document.addEventListener('keydown', (e) => this.handleKeyPress(e));
@@ -617,9 +650,254 @@ class PDFReader {
         this.dropZone.style.display = 'none';
         this.pdfViewer.style.display = 'flex';
     }
+
+    goHome() {
+        // 刷新当前页面
+        location.reload();
+    }
+
+    resetToHomePage() {
+        // 清空PDF相关数据
+        this.pdfDoc = null;
+        this.pageNum = 1;
+        this.pageCount = 0;
+        this.scale = 1.5;
+        
+        // 重置UI状态
+        this.pdfViewer.style.display = 'none';
+        this.dropZone.style.display = 'flex';
+        this.dropZone.classList.remove('dragover');
+        
+        // 清空画布
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // 清空缩略图
+        this.thumbnailContainer.innerHTML = '';
+        
+        // 重置缩放显示
+        this.zoomLevel.textContent = '150%';
+        this.zoomSlider.value = 150;
+        
+        // 隐藏加载overlay
+        this.hideLoading();
+        
+        // 重置文件输入
+        this.fileInput.value = '';
+        
+        console.log('已返回首页');
+    }
+
+    showUploadModal() {
+        this.uploadModal.style.display = 'flex';
+        this.uploadFileInput.value = '';
+        document.body.style.overflow = 'hidden';
+    }
+
+    hideUploadModal() {
+        this.uploadModal.style.display = 'none';
+        this.uploadDropZone.classList.remove('dragover');
+        document.body.style.overflow = 'auto';
+    }
+
+    handleUploadFileSelect(event) {
+        const file = event.target.files[0];
+        if (file && file.type === 'application/pdf') {
+            this.hideUploadModal();
+            this.loadPDF(file);
+        } else if (file) {
+            alert('请选择一个PDF文件');
+        }
+    }
+
+    handleUploadDragOver(event) {
+        event.preventDefault();
+        this.uploadDropZone.classList.add('dragover');
+    }
+
+    handleUploadDragLeave(event) {
+        event.preventDefault();
+        this.uploadDropZone.classList.remove('dragover');
+    }
+
+    handleUploadDrop(event) {
+        event.preventDefault();
+        this.uploadDropZone.classList.remove('dragover');
+        
+        const files = event.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            if (file.type === 'application/pdf') {
+                this.hideUploadModal();
+                this.loadPDF(file);
+            } else {
+                alert('请拖拽一个PDF文件');
+            }
+        }
+    }
+
+    async toggleReadAloud() {
+        if (this.isReading) {
+            this.stopReading();
+        } else {
+            await this.startReading();
+        }
+    }
+
+    async startReading() {
+        if (!this.pdfDoc || this.isReading) return;
+        
+        console.log(`🔊 开始朗读第 ${this.pageNum} 页`);
+        
+        try {
+            const page = await this.pdfDoc.getPage(this.pageNum);
+            const textContent = await page.getTextContent();
+            
+            // 提取页面文本
+            const pageText = textContent.items
+                .map(item => item.str)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            
+            console.log(`📝 页面文本提取完成，长度: ${pageText.length} 字符`);
+            console.log(`📖 文本内容预览: ${pageText.substring(0, 100)}${pageText.length > 100 ? '...' : ''}`);
+            
+            if (!pageText) {
+                console.log('❌ 当前页面没有可朗读的文本内容');
+                alert('当前页面没有可朗读的文本内容');
+                return;
+            }
+            
+            this.isReading = true;
+            this.updateReadButton();
+            
+            // 调用外部TTS API
+            const ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(pageText)}&speaker_id=p335`;
+            console.log(`🌐 调用TTS API: ${ttsUrl.substring(0, 100)}...`);
+            
+            try {
+                console.log('📡 正在发送TTS请求...');
+                const response = await fetch(ttsUrl);
+                
+                if (!response.ok) {
+                    console.log(`❌ TTS API请求失败，状态码: ${response.status}`);
+                    throw new Error(`TTS API请求失败: ${response.status}`);
+                }
+                
+                console.log('✅ TTS API响应成功，正在获取音频数据...');
+                
+                // 获取音频数据
+                const audioBlob = await response.blob();
+                console.log(`🎵 音频数据获取完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+                
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // 创建音频对象并播放
+                this.currentAudio = new Audio(audioUrl);
+                
+                this.currentAudio.onended = () => {
+                    console.log('🎵 音频播放完成');
+                    this.stopReading();
+                    URL.revokeObjectURL(audioUrl);
+                };
+                
+                this.currentAudio.onerror = () => {
+                    console.log('❌ 音频播放错误');
+                    this.stopReading();
+                    URL.revokeObjectURL(audioUrl);
+                    alert('音频播放错误，请重试');
+                };
+                
+                console.log('🎵 开始播放音频...');
+                await this.currentAudio.play();
+                console.log('✅ 音频播放已启动');
+                
+            } catch (apiError) {
+                console.error('❌ TTS API调用失败:', apiError);
+                alert('朗读服务暂时不可用，请稍后重试');
+                this.stopReading();
+            }
+            
+        } catch (error) {
+            console.error('❌ 朗读失败:', error);
+            alert('朗读功能出现错误，请重试');
+            this.stopReading();
+        }
+    }
+
+    // 测试方法：提取当前页面的文本内容
+    async testTextExtraction() {
+        if (!this.pdfDoc) {
+            console.log('未加载PDF文档');
+            return null;
+        }
+        
+        try {
+            const page = await this.pdfDoc.getPage(this.pageNum);
+            const textContent = await page.getTextContent();
+            
+            // 提取页面文本
+            const pageText = textContent.items
+                .map(item => item.str)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            
+            console.log('=== 文本提取测试结果 ===');
+            console.log(`页面: ${this.pageNum}`);
+            console.log(`文本项数量: ${textContent.items.length}`);
+            console.log(`文本长度: ${pageText.length}`);
+            console.log(`提取的文本: "${pageText}"`);
+            
+            // 返回提取的文本和元数据
+            return {
+                pageNumber: this.pageNum,
+                itemCount: textContent.items.length,
+                textLength: pageText.length,
+                text: pageText,
+                success: true
+            };
+            
+        } catch (error) {
+            console.error('文本提取失败:', error);
+            return {
+                pageNumber: this.pageNum,
+                error: error.message,
+                success: false
+            };
+        }
+    }
+
+    stopReading() {
+        if (this.currentAudio) {
+            console.log('⏹️ 停止音频播放');
+            this.currentAudio.pause();
+            this.currentAudio.currentTime = 0;
+            this.currentAudio = null;
+        }
+        this.isReading = false;
+        this.updateReadButton();
+        console.log('🔇 朗读功能已停止');
+    }
+
+    updateReadButton() {
+        if (this.isReading) {
+            this.readAloudBtn.innerHTML = '⏹️';
+            this.readAloudBtn.title = '停止朗读';
+            this.readAloudBtn.classList.add('reading');
+        } else {
+            this.readAloudBtn.innerHTML = '🔊';
+            this.readAloudBtn.title = '朗读当前页';
+            this.readAloudBtn.classList.remove('reading');
+        }
+    }
 }
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', () => {
-    new PDFReader();
+    const pdfReader = new PDFReader();
+    
+    // 将测试方法暴露到全局作用域，便于在浏览器控制台测试
+    window.testTextExtraction = () => pdfReader.testTextExtraction();
+    window.pdfReader = pdfReader;
 });

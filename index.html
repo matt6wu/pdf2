@@ -12,6 +12,9 @@
         <header class="header">
             <h1>PDF 电子阅读器</h1>
             <div class="controls">
+                <button id="homeBtn" class="control-btn">🏠</button>
+                <button id="uploadBtn" class="control-btn">📁</button>
+                <button id="readAloudBtn" class="control-btn" title="朗读当前页">🔊</button>
                 <button id="zoomOut" class="control-btn">−</button>
                 <span id="zoomLevel">100%</span>
                 <button id="zoomIn" class="control-btn">+</button>
@@ -67,7 +70,32 @@
         </div>
     </div>
 
+    <!-- 上传弹框 -->
+    <div id="uploadModal" class="upload-modal" style="display: none;">
+        <div class="upload-modal-content">
+            <div class="upload-modal-header">
+                <h3>上传PDF文件</h3>
+                <button id="closeUploadModal" class="close-modal-btn">×</button>
+            </div>
+            <div class="upload-modal-body">
+                <div id="uploadDropZone" class="upload-drop-zone">
+                    <div class="upload-drop-content">
+                        <svg class="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        <h4>拖拽PDF文件到此处</h4>
+                        <p>或点击选择文件</p>
+                        <input type="file" id="uploadFileInput" accept=".pdf" style="display: none;">
+                        <button id="selectUploadFile" class="upload-select-btn">选择文件</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="lib/build/pdf.mjs" type="module"></script>
-    <script src="js/main.js" type="module"></script>
+    <script src="js/main.js?v=2" type="module"></script>
 </body>
 </html>
