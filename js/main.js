@@ -50,6 +50,7 @@ class PDFReader {
         this.readAloudBtn = document.getElementById('readAloudBtn');
         this.stopReadingBtn = document.getElementById('stopReadingBtn');
         this.goToReadingPageBtn = document.getElementById('goToReadingPageBtn');
+        this.languageSelect = document.getElementById('languageSelect');
         
         // 调试：检查按钮是否正确获取
         console.log('🔍 按钮初始化检查:');
@@ -979,15 +980,44 @@ class PDFReader {
     }
 
     async loadSegmentAudio(text, retryCount = 3) {
-        // 调用外部TTS API加载音频数据
-        const ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(text)}&speaker_id=p335`;
+        // 获取选择的语言
+        const selectedLanguage = this.languageSelect.value;
+        console.log(`🔍 调试：选择的语言是 "${selectedLanguage}"`);
+        
+        let ttsUrl;
+        
+        if (selectedLanguage === 'zh') {
+            // 中文TTS - POST请求
+            ttsUrl = 'https://ttszh.mattwu.cc/tts';
+        } else {
+            // 英文TTS - GET请求
+            ttsUrl = `https://tts.mattwu.cc/api/tts?text=${encodeURIComponent(text)}&speaker_id=p335`;
+        }
         
         for (let attempt = 1; attempt <= retryCount; attempt++) {
             try {
-                console.log(`📡 正在生成语音 (尝试 ${attempt}/${retryCount})...`);
-                const response = await fetch(ttsUrl, {
-                    signal: AbortSignal.timeout(30000) // 30秒超时
-                });
+                console.log(`📡 正在生成${selectedLanguage === 'zh' ? '中文' : '英文'}语音 (尝试 ${attempt}/${retryCount})...`);
+                
+                let response;
+                
+                if (selectedLanguage === 'zh') {
+                    // 中文TTS - POST请求
+                    response = await fetch(ttsUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            text: text
+                        }),
+                        signal: AbortSignal.timeout(90000) // 90秒超时
+                    });
+                } else {
+                    // 英文TTS - GET请求
+                    response = await fetch(ttsUrl, {
+                        signal: AbortSignal.timeout(90000) // 90秒超时
+                    });
+                }
                 
                 if (!response.ok) {
                     throw new Error(`TTS API请求失败: ${response.status}`);
@@ -995,7 +1025,7 @@ class PDFReader {
                 
                 // 获取音频数据
                 const audioBlob = await response.blob();
-                console.log(`🎵 音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+                console.log(`🎵 ${selectedLanguage === 'zh' ? '中文' : '英文'}音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
                 
                 return audioBlob;
                 
