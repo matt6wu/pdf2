@@ -810,12 +810,17 @@ class PDFReader {
     }
 
     // 智能分段函数
-    splitTextIntelligently(text, maxLength = 400) {
+    splitTextIntelligently(text, maxLength = null) {
+        // 根据语言选择分段长度
+        const selectedLanguage = this.languageSelect.value;
+        if (maxLength === null) {
+            maxLength = selectedLanguage === 'zh' ? 150 : 400; // 中文150字符，英文400字符
+        }
         const segments = [];
         let currentSegment = '';
         
-        // 按句子分割（以句号、问号、感叹号为界）
-        const sentences = text.split(/([.!?]+\s+)/);
+        // 按句子分割（中英文标点符号）
+        const sentences = text.split(/([.!?。！？]+\s*)/);
         
         for (let i = 0; i < sentences.length; i++) {
             const sentence = sentences[i];
@@ -1010,12 +1015,12 @@ class PDFReader {
                         body: JSON.stringify({
                             text: text
                         }),
-                        signal: AbortSignal.timeout(90000) // 90秒超时
+                        signal: AbortSignal.timeout(300000) // 300秒(5分钟)超时
                     });
                 } else {
                     // 英文TTS - GET请求
                     response = await fetch(ttsUrl, {
-                        signal: AbortSignal.timeout(90000) // 90秒超时
+                        signal: AbortSignal.timeout(300000) // 300秒(5分钟)超时
                     });
                 }
                 

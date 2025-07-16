@@ -161,9 +161,13 @@ python3 -m http.server 6788 &
 ### PM2管理命令
 ```bash
 pm2 status              # 查看服务状态
-pm2 logs pdf-reader     # 查看日志
-pm2 restart pdf-reader  # 重启服务
-pm2 stop pdf-reader     # 停止服务
+pm2 logs pdf-reader     # 查看PDF阅读器日志
+pm2 logs chinese-tts    # 查看中文TTS日志
+pm2 logs tts-server     # 查看英文TTS日志
+pm2 restart pdf-reader  # 重启PDF阅读器服务
+pm2 restart chinese-tts # 重启中文TTS服务
+pm2 stop pdf-reader     # 停止PDF阅读器服务
+pm2 save               # 保存PM2配置
 ```
 
 ### 基本操作
