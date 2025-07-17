@@ -814,7 +814,7 @@ class PDFReader {
         // 根据语言选择分段长度
         const selectedLanguage = this.languageSelect.value;
         if (maxLength === null) {
-            maxLength = selectedLanguage === 'zh' ? 150 : 400; // 中文150字符，英文400字符
+            maxLength = selectedLanguage === 'zh' ? 60 : 250; // 中文60字符，英文250字符
         }
         const segments = [];
         let currentSegment = '';
@@ -940,9 +940,21 @@ class PDFReader {
             }
             
             // 开始预加载下一段（如果存在且未暂停）
+            // 优化：第一段播放后再开始预加载，避免首次双重加载
             if (i + 1 < segments.length && this.isReading && !this.isPaused) {
-                nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
-                console.log(`⚡ 开始预加载第 ${i+2} 段`);
+                // 延迟预加载，让第一段先开始播放
+                if (i === 0) {
+                    // 第一段播放开始后再预加载第二段
+                    setTimeout(() => {
+                        if (this.isReading && !this.isPaused) {
+                            nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+                            console.log(`⚡ 延迟预加载第 ${i+2} 段`);
+                        }
+                    }, 1000); // 1秒后开始预加载
+                } else {
+                    nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+                    console.log(`⚡ 开始预加载第 ${i+2} 段`);
+                }
             }
             
             try {
