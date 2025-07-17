@@ -853,42 +853,26 @@ class PDFReader {
         // 根据语言选择分段长度
         const selectedLanguage = this.languageSelect.value;
         if (maxLength === null) {
-            maxLength = selectedLanguage === 'zh' ? 60 : 250; // 中文60字符，英文250字符
+            maxLength = selectedLanguage === 'zh' ? 30 : 100; // 中文30字符，英文100字符
         }
+        console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}`);
         const segments = [];
-        let currentSegment = '';
         
-        // 按句子分割（中英文标点符号）
-        const sentences = text.split(/([.!?。！？]+\s*)/);
-        
-        for (let i = 0; i < sentences.length; i++) {
-            const sentence = sentences[i];
+        // 超简单强制分段，绝对不允许超过maxLength
+        for (let i = 0; i < text.length; i += maxLength) {
+            // 直接截取maxLength长度，不做任何trim
+            let segment = text.substring(i, i + maxLength);
             
-            if (currentSegment.length + sentence.length <= maxLength) {
-                currentSegment += sentence;
-            } else {
-                if (currentSegment.trim() && currentSegment.trim().length > 10) {
-                    segments.push(currentSegment.trim());
-                }
-                currentSegment = sentence;
+            // 保留标点符号，但用更短的分段长度
+            console.log(`🔍 循环 ${Math.floor(i/maxLength) + 1}: i=${i}, maxLength=${maxLength}, 截取${i}到${i + maxLength}`);
+            
+            if (segment.length > 0) {
+                segments.push(segment);
+                console.log(`🔍 分段 ${segments.length}: "${segment}" (${segment.length} 字符)`);
             }
         }
         
-        if (currentSegment.trim() && currentSegment.trim().length > 10) {
-            segments.push(currentSegment.trim());
-        }
-        
-        // 如果没有分段成功，按长度强制分段
-        if (segments.length === 0 && text.length > maxLength) {
-            for (let i = 0; i < text.length; i += maxLength) {
-                const segment = text.substring(i, i + maxLength);
-                if (segment.trim().length > 10) {
-                    segments.push(segment.trim());
-                }
-            }
-        }
-        
-        // 如果仍然没有分段，直接返回原文本
+        // 如果没有分段成功，直接返回原文本
         if (segments.length === 0 && text.trim().length > 0) {
             segments.push(text.trim());
         }
