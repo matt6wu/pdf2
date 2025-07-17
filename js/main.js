@@ -866,26 +866,78 @@ class PDFReader {
 
     // 智能分段函数
     splitTextIntelligently(text, maxLength = null) {
-        // 根据语言选择分段长度
+        // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
         const selectedLanguage = this.languageSelect.value;
         if (maxLength === null) {
-            maxLength = selectedLanguage === 'zh' ? 30 : 100; // 中文30字符，英文100字符
+            maxLength = selectedLanguage === 'zh' ? 60 : 120; // 中文60字符，英文120字符
         }
         console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}`);
         const segments = [];
         
-        // 超简单强制分段，绝对不允许超过maxLength
-        for (let i = 0; i < text.length; i += maxLength) {
-            // 直接截取maxLength长度，不做任何trim
-            let segment = text.substring(i, i + maxLength);
-            
-            // 保留标点符号，但用更短的分段长度
-            console.log(`🔍 循环 ${Math.floor(i/maxLength) + 1}: i=${i}, maxLength=${maxLength}, 截取${i}到${i + maxLength}`);
-            
-            if (segment.length > 0) {
-                segments.push(segment);
-                console.log(`🔍 分段 ${segments.length}: "${segment}" (${segment.length} 字符)`);
+        // 如果文本长度小于最大长度，直接返回整个文本
+        if (text.length <= maxLength) {
+            console.log(`📝 文本长度 ${text.length} 小于最大长度 ${maxLength}，不分段`);
+            return [text.trim()];
+        }
+        
+        // 智能分段：按句子边界分割，绝对不在句子中间切断
+        const sentenceEnders = /([.!?。！？；;])\s*/g;
+        const sentences = [];
+        let lastIndex = 0;
+        let match;
+        
+        // 提取完整的句子（包含标点符号）
+        while ((match = sentenceEnders.exec(text)) !== null) {
+            const sentence = text.substring(lastIndex, match.index + match[0].length).trim();
+            if (sentence) {
+                sentences.push(sentence);
             }
+            lastIndex = match.index + match[0].length;
+        }
+        
+        // 添加最后一个句子（如果有的话）
+        if (lastIndex < text.length) {
+            const lastSentence = text.substring(lastIndex).trim();
+            if (lastSentence) {
+                sentences.push(lastSentence);
+            }
+        }
+        
+        // 如果没有找到句子边界，整个文本作为一个句子
+        if (sentences.length === 0) {
+            sentences.push(text.trim());
+        }
+        
+        let currentSegment = '';
+        
+        for (let i = 0; i < sentences.length; i++) {
+            const sentence = sentences[i].trim();
+            if (!sentence) continue;
+            
+            // 检查添加这个句子后是否超过最大长度
+            const potentialSegment = currentSegment ? currentSegment + ' ' + sentence : sentence;
+            
+            if (potentialSegment.length <= maxLength) {
+                // 不超过最大长度，添加到当前段落
+                currentSegment = potentialSegment;
+            } else {
+                // 超过最大长度
+                if (currentSegment) {
+                    // 如果当前段落不为空，保存当前段落
+                    segments.push(currentSegment);
+                    currentSegment = sentence;
+                } else {
+                    // 单个句子就超过了最大长度，直接作为一个段落
+                    // 不再强制分割，保持句子完整性
+                    segments.push(sentence);
+                    currentSegment = '';
+                }
+            }
+        }
+        
+        // 添加最后一个段落
+        if (currentSegment) {
+            segments.push(currentSegment);
         }
         
         // 如果没有分段成功，直接返回原文本
@@ -895,11 +947,12 @@ class PDFReader {
         
         console.log(`📊 文本分段结果: ${segments.length} 段`);
         segments.forEach((segment, index) => {
-            console.log(`段 ${index + 1}: "${segment.substring(0, 50)}${segment.length > 50 ? '...' : ''}" (${segment.length} 字符)`);
+            console.log(`段 ${index + 1}: "${segment.substring(0, 80)}${segment.length > 80 ? '...' : ''}" (${segment.length} 字符)`);
         });
         
         return segments;
     }
+    
 
     async startReading() {
         if (!this.pdfDoc || this.isReading) return;
@@ -1390,15 +1443,39 @@ class PDFReader {
             const afterText = allText.substring(segmentStart + currentSegmentText.length);
             
             this.readingText.innerHTML = 
-                `<span style="color: #666;">${beforeText}</span>` +
-                `<span style="background-color: #007bff; color: white; padding: 2px 4px; border-radius: 3px;">${currentSegmentText}</span>` +
-                `<span style="color: #666;">${afterText}</span>`;
+                `<span style="color: #888; font-size: 0.9em;">${beforeText}</span>` +
+                `<span id="currentHighlight" style="background-color: #007bff; color: white; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 1.1em;">${currentSegmentText}</span>` +
+                `<span style="color: #888; font-size: 0.9em;">${afterText}</span>`;
+            
+            // 自动滚动到当前高亮段落
+            this.scrollToCurrentSegment();
         }
         
         // 更新进度
         this.updateReadingProgress();
         
         console.log(`📋 朗读内容框已更新到第 ${segmentIndex + 1} 段`);
+    }
+    
+    // 自动滚动到当前段落
+    scrollToCurrentSegment() {
+        const highlightElement = document.getElementById('currentHighlight');
+        if (highlightElement && this.readingText) {
+            // 平滑滚动到当前高亮段落
+            highlightElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest'
+            });
+            
+            // 添加一个简单的动画效果
+            highlightElement.style.animation = 'pulse 0.5s ease-in-out';
+            setTimeout(() => {
+                if (highlightElement) {
+                    highlightElement.style.animation = '';
+                }
+            }, 500);
+        }
     }
 
     // 更新朗读进度
@@ -1567,6 +1644,7 @@ class PDFReader {
             header.classList.remove('dragging');
         });
     }
+
 }
 
 // 初始化应用
