@@ -22,6 +22,8 @@ class PDFReader {
         this.hoverTimeout = null; // 悬停防抖定时器
         this.autoNextPage = true; // 自动翻页开关
         this.readingPageNum = 1; // 当前朗读的页码
+        this.currentSegmentIndex = 0; // 当前朗读段落索引
+        this.totalSegmentCount = 0; // 总段落数
         
         this.initializeElements();
         this.setupEventListeners();
@@ -53,12 +55,20 @@ class PDFReader {
         this.stopReadingBtn = document.getElementById('stopReadingBtn');
         this.goToReadingPageBtn = document.getElementById('goToReadingPageBtn');
         this.languageSelect = document.getElementById('languageSelect');
+        this.readingContentPanel = document.getElementById('readingContentPanel');
+        this.readingText = document.getElementById('readingText');
+        this.currentSegment = document.getElementById('currentSegment');
+        this.totalSegments = document.getElementById('totalSegments');
+        this.readingProgressFill = document.getElementById('readingProgressFill');
+        this.closeReadingPanel = document.getElementById('closeReadingPanel');
         
         // 调试：检查按钮是否正确获取
         console.log('🔍 按钮初始化检查:');
         console.log('readAloudBtn:', this.readAloudBtn);
         console.log('stopReadingBtn:', this.stopReadingBtn);
         console.log('goToReadingPageBtn:', this.goToReadingPageBtn);
+        console.log('readingContentPanel:', this.readingContentPanel);
+        console.log('readingText:', this.readingText);
         this.uploadModal = document.getElementById('uploadModal');
         this.uploadDropZone = document.getElementById('uploadDropZone');
         this.uploadFileInput = document.getElementById('uploadFileInput');
@@ -106,6 +116,12 @@ class PDFReader {
         
         // 回到朗读页面按钮 - 只支持点击
         this.goToReadingPageBtn.addEventListener('click', () => this.goToReadingPage());
+        
+        // 朗读内容框关闭按钮
+        this.closeReadingPanel.addEventListener('click', () => this.hideReadingContentPanel());
+        
+        // 朗读内容框拖拽功能
+        this.setupReadingPanelDrag();
         
         // 上传按钮和弹框
         this.uploadBtn.addEventListener('click', () => this.showUploadModal());
@@ -924,9 +940,14 @@ class PDFReader {
             
             this.isReading = true;
             this.readingPageNum = this.pageNum; // 记录开始朗读的页码
+            this.currentSegmentIndex = 0;
+            this.totalSegmentCount = segments.length;
             this.updateReadButton();
             this.updateStopButton();
             this.updateGoToReadingPageButton();
+            
+            // 显示朗读内容框并设置初始文本
+            this.showReadingContentPanel(pageText, segments);
             
             // 逐段播放
             await this.playSegments(segments);
@@ -952,6 +973,9 @@ class PDFReader {
             if (!this.isReading) break; // 再次检查是否被停止
             
             console.log(`🎵 播放第 ${i+1}/${segments.length} 段`);
+            
+            // 更新朗读内容框显示当前段落
+            this.updateReadingContentPanel(i, segments[i]);
             
             // 如果有预加载的音频，使用它；否则现场加载
             let audioPromise;
@@ -1190,11 +1214,14 @@ class PDFReader {
         // 重置状态
         this.isReading = false;
         this.isPaused = false;
+        this.currentSegmentIndex = 0;
+        this.totalSegmentCount = 0;
         
         // 更新UI
         this.updateReadButton();
         this.updateStopButton();
         this.updateGoToReadingPageButton();
+        this.hideReadingContentPanel();
         
         console.log('🔇 朗读功能已彻底停止，所有音频和定时器已清理');
     }
@@ -1240,6 +1267,10 @@ class PDFReader {
             if (pageText && pageText.length >= 10) {
                 console.log(`📖 开始朗读第 ${this.pageNum} 页`);
                 const segments = this.splitTextIntelligently(pageText);
+                this.currentSegmentIndex = 0;
+                this.totalSegmentCount = segments.length;
+                // 更新朗读内容框显示新页面的文本
+                this.showReadingContentPanel(pageText, segments);
                 await this.playSegments(segments);
             } else {
                 console.log('⚠️ 当前页面没有足够文本内容，跳过并继续下一页');
@@ -1320,6 +1351,221 @@ class PDFReader {
             this.goToReadingPageBtn.classList.remove('pulse');
             console.log(`❌ 隐藏回到朗读页面按钮 - 未在朗读`);
         }
+    }
+
+    // 显示朗读内容框
+    showReadingContentPanel(fullText, segments) {
+        console.log('🔍 showReadingContentPanel 被调用');
+        console.log('🔍 readingContentPanel 元素:', this.readingContentPanel);
+        console.log('🔍 readingText 元素:', this.readingText);
+        
+        if (!this.readingContentPanel) {
+            console.error('❌ readingContentPanel 元素未找到');
+            return;
+        }
+        
+        this.readingContentPanel.style.display = 'block';
+        this.readingText.textContent = fullText;
+        this.currentSegmentIndex = 0;
+        this.totalSegmentCount = segments.length;
+        
+        // 更新进度信息
+        this.updateReadingProgress();
+        
+        console.log('📋 朗读内容框已显示, 文本长度:', fullText.length);
+    }
+
+    // 更新朗读内容框当前段落
+    updateReadingContentPanel(segmentIndex, currentSegmentText) {
+        if (!this.readingContentPanel || this.readingContentPanel.style.display === 'none') return;
+        
+        this.currentSegmentIndex = segmentIndex;
+        
+        // 高亮当前段落
+        const allText = this.readingText.textContent;
+        const segmentStart = allText.indexOf(currentSegmentText);
+        
+        if (segmentStart !== -1) {
+            const beforeText = allText.substring(0, segmentStart);
+            const afterText = allText.substring(segmentStart + currentSegmentText.length);
+            
+            this.readingText.innerHTML = 
+                `<span style="color: #666;">${beforeText}</span>` +
+                `<span style="background-color: #007bff; color: white; padding: 2px 4px; border-radius: 3px;">${currentSegmentText}</span>` +
+                `<span style="color: #666;">${afterText}</span>`;
+        }
+        
+        // 更新进度
+        this.updateReadingProgress();
+        
+        console.log(`📋 朗读内容框已更新到第 ${segmentIndex + 1} 段`);
+    }
+
+    // 更新朗读进度
+    updateReadingProgress() {
+        if (!this.currentSegment || !this.totalSegments || !this.readingProgressFill) return;
+        
+        this.currentSegment.textContent = `段落 ${this.currentSegmentIndex + 1}`;
+        this.totalSegments.textContent = `共 ${this.totalSegmentCount} 段`;
+        
+        const progress = this.totalSegmentCount > 0 ? 
+            ((this.currentSegmentIndex + 1) / this.totalSegmentCount) * 100 : 0;
+        this.readingProgressFill.style.width = `${progress}%`;
+    }
+
+    // 隐藏朗读内容框
+    hideReadingContentPanel() {
+        if (this.readingContentPanel) {
+            this.readingContentPanel.style.display = 'none';
+            this.readingText.textContent = '';
+            this.currentSegmentIndex = 0;
+            this.totalSegmentCount = 0;
+            this.updateReadingProgress();
+            // 重置位置
+            this.readingContentPanel.style.transform = 'translate(-50%, -50%)';
+            this.readingContentPanel.style.left = '50%';
+            this.readingContentPanel.style.top = '50%';
+            console.log('📋 朗读内容框已隐藏');
+        }
+    }
+
+    // 设置朗读内容框拖拽功能
+    setupReadingPanelDrag() {
+        if (!this.readingContentPanel) return;
+        
+        const header = this.readingContentPanel.querySelector('.reading-panel-header');
+        if (!header) return;
+        
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let initialX = 0;
+        let initialY = 0;
+        
+        header.addEventListener('mousedown', (e) => {
+            // 不拖拽关闭按钮
+            if (e.target.classList.contains('close-reading-panel')) return;
+            
+            isDragging = true;
+            header.classList.add('dragging');
+            
+            // 获取当前位置
+            const rect = this.readingContentPanel.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            startX = e.clientX;
+            startY = e.clientY;
+            initialX = centerX;
+            initialY = centerY;
+            
+            // 防止文本选择
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'grabbing';
+            
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+            
+            let newX = initialX + deltaX;
+            let newY = initialY + deltaY;
+            
+            // 限制在窗口范围内
+            const panelWidth = this.readingContentPanel.offsetWidth;
+            const panelHeight = this.readingContentPanel.offsetHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            const minX = panelWidth / 2;
+            const maxX = windowWidth - panelWidth / 2;
+            const minY = panelHeight / 2;
+            const maxY = windowHeight - panelHeight / 2;
+            
+            newX = Math.max(minX, Math.min(maxX, newX));
+            newY = Math.max(minY, Math.min(maxY, newY));
+            
+            // 转换为相对于中心的偏移
+            const offsetX = newX - windowWidth / 2;
+            const offsetY = newY - windowHeight / 2;
+            
+            this.readingContentPanel.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
+            
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (!isDragging) return;
+            
+            isDragging = false;
+            header.classList.remove('dragging');
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        });
+        
+        // 触摸设备支持
+        header.addEventListener('touchstart', (e) => {
+            if (e.target.classList.contains('close-reading-panel')) return;
+            
+            isDragging = true;
+            header.classList.add('dragging');
+            
+            const touch = e.touches[0];
+            const rect = this.readingContentPanel.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            startX = touch.clientX;
+            startY = touch.clientY;
+            initialX = centerX;
+            initialY = centerY;
+            
+            e.preventDefault();
+        });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - startX;
+            const deltaY = touch.clientY - startY;
+            
+            let newX = initialX + deltaX;
+            let newY = initialY + deltaY;
+            
+            // 限制在窗口范围内
+            const panelWidth = this.readingContentPanel.offsetWidth;
+            const panelHeight = this.readingContentPanel.offsetHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            const minX = panelWidth / 2;
+            const maxX = windowWidth - panelWidth / 2;
+            const minY = panelHeight / 2;
+            const maxY = windowHeight - panelHeight / 2;
+            
+            newX = Math.max(minX, Math.min(maxX, newX));
+            newY = Math.max(minY, Math.min(maxY, newY));
+            
+            // 转换为相对于中心的偏移
+            const offsetX = newX - windowWidth / 2;
+            const offsetY = newY - windowHeight / 2;
+            
+            this.readingContentPanel.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
+            
+            e.preventDefault();
+        });
+        
+        document.addEventListener('touchend', () => {
+            if (!isDragging) return;
+            
+            isDragging = false;
+            header.classList.remove('dragging');
+        });
     }
 }
 
