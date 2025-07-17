@@ -17,6 +17,8 @@ class PDFReader {
         this.isReading = false; // 朗读状态
         this.isPaused = false; // 暂停状态
         this.currentAudio = null; // 当前播放的音频对象
+        this.allAudios = []; // 所有音频实例列表
+        this.preloadTimeouts = []; // 预加载定时器列表
         this.hoverTimeout = null; // 悬停防抖定时器
         this.autoNextPage = true; // 自动翻页开关
         this.readingPageNum = 1; // 当前朗读的页码
@@ -92,11 +94,11 @@ class PDFReader {
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
         
-        // 朗读按钮 - 悬停触发
+        // 朗读按钮 - 智能触发（根据状态决定是否支持悬停）
         this.readAloudBtn.addEventListener('mouseenter', () => this.handleHoverTrigger());
         this.readAloudBtn.addEventListener('mouseleave', () => this.clearHoverTimeout());
         
-        // 备用点击事件（防止悬停失效）
+        // 点击事件（所有状态都支持）
         this.readAloudBtn.addEventListener('click', () => this.toggleReadAloud());
         
         // 停止朗读按钮 - 只支持点击
@@ -479,14 +481,14 @@ class PDFReader {
 
     goToPreviousPage() {
         if (this.pageNum > 1) {
-            this.stopReading(); // 手动翻页停止朗读
+            this.stopReading(); // 手动翻页彻底停止朗读
             this.renderPage(this.pageNum - 1, true, true);
         }
     }
 
     goToNextPage() {
         if (this.pageNum < this.pageCount) {
-            this.stopReading(); // 手动翻页停止朗读
+            this.stopReading(); // 手动翻页彻底停止朗读
             this.renderPage(this.pageNum + 1, true, true);
         }
     }
@@ -762,13 +764,19 @@ class PDFReader {
     }
 
     handleHoverTrigger() {
-        // 清除之前的定时器
-        this.clearHoverTimeout();
-        
-        // 短暂延迟，避免意外触发
-        this.hoverTimeout = setTimeout(() => {
-            this.toggleReadAloud();
-        }, 300); // 300ms 延迟
+        // 只有在未开始朗读时才允许悬停触发
+        if (!this.isReading) {
+            // 清除之前的定时器
+            this.clearHoverTimeout();
+            
+            // 短暂延迟，避免意外触发
+            this.hoverTimeout = setTimeout(() => {
+                this.toggleReadAloud();
+            }, 300); // 300ms 延迟
+        } else {
+            // 如果正在朗读（暂停或播放状态），不响应悬停
+            console.log('🚫 朗读进行中，悬停触发已禁用，请点击按钮操作');
+        }
     }
 
     clearHoverTimeout() {
@@ -793,19 +801,50 @@ class PDFReader {
 
     pauseReading() {
         if (this.currentAudio && !this.currentAudio.paused) {
+            console.log('⏸️ 执行暂停操作');
+            
+            // 暂停当前音频
             this.currentAudio.pause();
+            
+            // 暂停所有正在播放的音频
+            this.allAudios.forEach((audio, index) => {
+                if (audio && !audio.paused) {
+                    audio.pause();
+                    console.log(`⏸️ 暂停音频实例 ${index + 1}`);
+                }
+            });
+            
+            // 暂停预加载任务（清除定时器）
+            this.preloadTimeouts.forEach(timeoutId => {
+                clearTimeout(timeoutId);
+            });
+            this.preloadTimeouts = [];
+            console.log('⏸️ 暂停预加载任务');
+            
             this.isPaused = true;
             this.updateReadButton();
-            console.log('⏸️ 朗读已暂停');
+            console.log('⏸️ 朗读已暂停，所有音频和预加载任务已暂停');
         }
     }
 
     resumeReading() {
-        if (this.currentAudio && this.currentAudio.paused) {
-            this.currentAudio.play();
+        if (this.currentAudio && this.currentAudio.paused && this.isPaused) {
+            console.log('▶️ 执行恢复操作');
+            
+            // 恢复当前音频播放
+            this.currentAudio.play().then(() => {
+                console.log('▶️ 当前音频恢复播放');
+            }).catch(error => {
+                console.error('▶️ 恢复播放失败:', error);
+            });
+            
+            // 恢复状态
             this.isPaused = false;
             this.updateReadButton();
-            console.log('▶️ 朗读已恢复');
+            
+            console.log('▶️ 朗读已恢复，继续播放当前段落');
+        } else if (!this.currentAudio || !this.isPaused) {
+            console.log('⚠️ 无法恢复：没有处于暂停状态的音频');
         }
     }
 
@@ -945,15 +984,19 @@ class PDFReader {
                 // 延迟预加载，让第一段先开始播放
                 if (i === 0) {
                     // 第一段播放开始后再预加载第二段
-                    setTimeout(() => {
+                    const timeoutId = setTimeout(() => {
                         if (this.isReading && !this.isPaused) {
                             nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                             console.log(`⚡ 延迟预加载第 ${i+2} 段`);
                         }
                     }, 1000); // 1秒后开始预加载
+                    this.preloadTimeouts.push(timeoutId);
                 } else {
-                    nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
-                    console.log(`⚡ 开始预加载第 ${i+2} 段`);
+                    // 非第一段的预加载也要检查状态
+                    if (this.isReading && !this.isPaused) {
+                        nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+                        console.log(`⚡ 开始预加载第 ${i+2} 段`);
+                    }
                 }
             }
             
@@ -1066,18 +1109,28 @@ class PDFReader {
             
             audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
+                this.removeAudioFromList(audio);
                 resolve();
             };
             
             audio.onerror = () => {
                 URL.revokeObjectURL(audioUrl);
+                this.removeAudioFromList(audio);
                 reject(new Error('音频播放错误'));
             };
             
             // 存储当前音频引用用于停止控制
             this.currentAudio = audio;
+            this.allAudios.push(audio); // 添加到所有音频列表
             audio.play().catch(reject);
         });
+    }
+
+    removeAudioFromList(audio) {
+        const index = this.allAudios.indexOf(audio);
+        if (index > -1) {
+            this.allAudios.splice(index, 1);
+        }
     }
 
 
@@ -1125,18 +1178,41 @@ class PDFReader {
     }
 
     stopReading() {
-        if (this.currentAudio) {
-            console.log('⏹️ 停止音频播放');
-            this.currentAudio.pause();
-            this.currentAudio.currentTime = 0;
-            this.currentAudio = null;
-        }
+        console.log('🛑 执行彻底停止朗读操作');
+        
+        // 停止所有音频实例
+        this.allAudios.forEach((audio, index) => {
+            if (audio) {
+                console.log(`⏹️ 停止音频实例 ${index + 1}`);
+                audio.pause();
+                audio.currentTime = 0;
+                audio.src = ''; // 清空音频源
+            }
+        });
+        
+        // 清空所有音频引用
+        this.allAudios = [];
+        this.currentAudio = null;
+        
+        // 清除所有预加载定时器
+        this.preloadTimeouts.forEach(timeoutId => {
+            clearTimeout(timeoutId);
+        });
+        this.preloadTimeouts = [];
+        
+        // 清除悬停定时器
+        this.clearHoverTimeout();
+        
+        // 重置状态
         this.isReading = false;
         this.isPaused = false;
+        
+        // 更新UI
         this.updateReadButton();
         this.updateStopButton();
         this.updateGoToReadingPageButton();
-        console.log('🔇 朗读功能已停止');
+        
+        console.log('🔇 朗读功能已彻底停止，所有音频和定时器已清理');
     }
 
     async autoGoToNextPageAndRead() {
@@ -1199,7 +1275,7 @@ class PDFReader {
     }
 
     forceStopReading() {
-        console.log('🛑 强制停止朗读 - 用户点击停止按钮');
+        console.log('🛑 用户强制停止朗读 - 点击停止按钮');
         this.stopReading();
     }
 
