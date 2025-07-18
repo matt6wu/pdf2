@@ -306,22 +306,41 @@ class PDFReader {
         const viewerContainer = this.pdfContainer;
         const availableWidth = viewerContainer.clientWidth - 80; // 减去边距
         
+        // 验证容器尺寸是否有效
+        if (!viewerContainer || availableWidth <= 0) {
+            console.warn('⚠️ adjustPDFScale: 容器尺寸无效，跳过缩放调整');
+            return;
+        }
+        
         // 获取PDF原始尺寸
         this.pdfDoc.getPage(this.pageNum).then(page => {
             const viewport = page.getViewport({ scale: 1.0 });
             const pdfWidth = viewport.width;
             
+            console.log(`🔍 adjustPDFScale: 容器宽度=${availableWidth}, PDF宽度=${pdfWidth}`);
+            
             // 主要基于宽度来计算缩放比例，让PDF自然适应容器宽度
             let newScale = availableWidth / pdfWidth;
+            console.log(`🔍 adjustPDFScale: 计算的缩放=${newScale.toFixed(3)}`);
+            
+            // 验证计算结果是否合理
+            if (newScale <= 0 || !isFinite(newScale)) {
+                console.warn('⚠️ adjustPDFScale: 计算出异常的缩放值，跳过调整');
+                return;
+            }
             
             // 限制缩放范围，但允许更大的范围
             newScale = Math.max(0.3, Math.min(3.0, newScale));
+            console.log(`🔍 adjustPDFScale: 限制后的缩放=${newScale.toFixed(3)}, 当前缩放=${this.scale.toFixed(3)}`);
             
             // 只有当缩放变化较大时才更新
             if (Math.abs(this.scale - newScale) > 0.1) {
+                console.log(`🎯 adjustPDFScale: 更新缩放从${this.scale.toFixed(3)}到${newScale.toFixed(3)}`);
                 this.scale = newScale;
                 this.updateZoomLevel();
                 this.updateSliderPosition();
+            } else {
+                console.log('🔍 adjustPDFScale: 缩放变化太小，跳过更新');
             }
         }).catch(error => {
             console.error('调整PDF缩放失败:', error);
@@ -676,6 +695,8 @@ class PDFReader {
             const zoomFactor = 0.1;
             const delta = event.deltaY;
             
+            const oldScale = this.scale;
+            
             if (delta < 0) {
                 // 向上滚动，放大
                 this.scale = Math.min(this.scale + zoomFactor, 4.0);
@@ -683,6 +704,14 @@ class PDFReader {
                 // 向下滚动，缩小
                 this.scale = Math.max(this.scale - zoomFactor, 0.3);
             }
+            
+            // 验证缩放值是否合理
+            if (this.scale <= 0 || !isFinite(this.scale)) {
+                console.warn('⚠️ handleWheel: 检测到异常缩放值，恢复到安全值');
+                this.scale = 1.0;
+            }
+            
+            console.log(`🔍 handleWheel: 缩放从${oldScale.toFixed(3)}到${this.scale.toFixed(3)}`);
             
             this.renderPage(this.pageNum);
             this.updateZoomLevel();
