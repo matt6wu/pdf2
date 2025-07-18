@@ -1236,6 +1236,10 @@ body {
         font-size: 0.9rem;
     }
     
+    #readAloudBtn, #stopReadingBtn {
+        font-size: 1rem !important;
+    }
+    
     .drop-zone {
         margin: 1rem;
     }
