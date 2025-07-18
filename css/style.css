@@ -367,26 +367,32 @@ body {
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
 }
 
-.language-select {
+.language-toggle-btn {
     background: #007bff;
-    color: white;
-    border: 1px solid #007bff;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
+    border-color: #007bff;
+    font-size: 1.2rem;
+    font-weight: bold;
+    min-width: 45px;
+    position: relative;
+    overflow: hidden;
 }
 
-.language-select:hover {
+.language-toggle-btn:hover {
     background: #0056b3;
     border-color: #0056b3;
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
 }
 
-.language-select:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+.language-toggle-btn[data-language="en"] {
+    background: #28a745;
+    border-color: #28a745;
+}
+
+.language-toggle-btn[data-language="en"]:hover {
+    background: #218838;
+    border-color: #218838;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
 }
 
 .control-btn {

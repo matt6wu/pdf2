@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF电子阅读器</title>
-    <link rel="stylesheet" href="css/style.css?v=33">
+    <link rel="stylesheet" href="css/style.css?v=34">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf_viewer.min.css">
 </head>
 <body>
@@ -15,10 +15,7 @@
                 <button id="homeBtn" class="control-btn">🏠 Home</button>
                 <button id="uploadBtn" class="control-btn">📁 Upload</button>
                 <a href="https://z-library.sk" target="_blank" class="control-btn zlib-link" title="访问Z-Library">📚 Z-Library</a>
-                <select id="languageSelect" class="language-select" title="选择朗读语言">
-                    <option value="zh">中文</option>
-                    <option value="en">English</option>
-                </select>
+                <button id="languageToggleBtn" class="control-btn language-toggle-btn" title="切换朗读语言" data-language="zh">中</button>
                 <button id="readAloudBtn" class="control-btn" title="朗读当前页">🔊 Read</button>
                 <button id="stopReadingBtn" class="control-btn" title="停止朗读">⏹️ Stop</button>
                 <button id="goToReadingPageBtn" class="control-btn" title="回到朗读页面" style="display: none;">📖</button>
@@ -124,6 +121,6 @@
     </div>
 
     <script src="lib/build/pdf.mjs" type="module"></script>
-    <script src="js/main.js?v=40" type="module"></script>
+    <script src="js/main.js?v=42" type="module"></script>
 </body>
 </html>

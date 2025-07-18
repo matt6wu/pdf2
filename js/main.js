@@ -54,7 +54,7 @@ class PDFReader {
         this.readAloudBtn = document.getElementById('readAloudBtn');
         this.stopReadingBtn = document.getElementById('stopReadingBtn');
         this.goToReadingPageBtn = document.getElementById('goToReadingPageBtn');
-        this.languageSelect = document.getElementById('languageSelect');
+        this.languageToggleBtn = document.getElementById('languageToggleBtn');
         this.readingContentPanel = document.getElementById('readingContentPanel');
         this.readingText = document.getElementById('readingText');
         this.currentSegment = document.getElementById('currentSegment');
@@ -103,6 +103,9 @@ class PDFReader {
         
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
+        
+        // 语言切换按钮
+        this.languageToggleBtn.addEventListener('click', () => this.toggleLanguage());
         
         // 朗读按钮 - 智能触发（根据状态决定是否支持悬停）
         this.readAloudBtn.addEventListener('mouseenter', () => this.handleHoverTrigger());
@@ -699,6 +702,23 @@ class PDFReader {
         // 刷新当前页面
         location.reload();
     }
+    
+    toggleLanguage() {
+        const currentLanguage = this.languageToggleBtn.dataset.language;
+        const newLanguage = currentLanguage === 'zh' ? 'en' : 'zh';
+        
+        // 更新按钮状态
+        this.languageToggleBtn.dataset.language = newLanguage;
+        this.languageToggleBtn.textContent = newLanguage === 'zh' ? '中' : 'ENG';
+        
+        console.log(`🌍 语言切换: ${currentLanguage} → ${newLanguage}`);
+        
+        // 如果正在朗读，停止当前朗读
+        if (this.isReading) {
+            console.log('🔄 语言切换时停止当前朗读');
+            this.forceStopReading();
+        }
+    }
 
     resetToHomePage() {
         // 清空PDF相关数据
@@ -873,7 +893,7 @@ class PDFReader {
     // 智能分段函数
     splitTextIntelligently(text, maxLength = null) {
         // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
-        const selectedLanguage = this.languageSelect.value;
+        const selectedLanguage = this.languageToggleBtn.dataset.language;
         if (maxLength === null) {
             maxLength = selectedLanguage === 'zh' ? 60 : 300; // 中文保持60字符，英文增加到300字符
         }
@@ -1049,6 +1069,10 @@ class PDFReader {
         let nextAudioPromise = null;
         let isPreloadingNext = false; // 防止重复预加载
         
+        // 获取当前语言设置
+        const selectedLanguage = this.languageToggleBtn.dataset.language;
+        console.log(`🌍 当前语言: ${selectedLanguage}, 将使用对应的预加载策略`);
+        
         for (let i = 0; i < segments.length; i++) {
             if (!this.isReading) break; // 检查是否被用户停止
             
@@ -1090,7 +1114,16 @@ class PDFReader {
                 
                 this.preloadTimeouts.push(timeoutId);
             } else if (i === 0) {
-                console.log(`🎯 第一段不预加载，专心播放当前段落`);
+                // 根据语言选择不同的预加载策略
+                if (selectedLanguage === 'en' && i + 1 < segments.length && this.isReading && !this.isPaused) {
+                    // 英文：第一段播放开始时立即预加载第二段
+                    isPreloadingNext = true;
+                    console.log(`🎯 英文模式：第一段播放开始，立即预加载第二段`);
+                    nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+                } else {
+                    // 中文：第一段专心播放，不预加载
+                    console.log(`🎯 中文模式：第一段专心播放，不预加载`);
+                }
             }
             
             try {
@@ -1106,10 +1139,10 @@ class PDFReader {
                 
                 console.log(`✅ 第 ${i+1}/${segments.length} 段播放完成`);
                 
-                // 在第一段播放完成后才开始预加载第二段
-                if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext) {
+                // 中文模式：在第一段播放完成后才开始预加载第二段
+                if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext && selectedLanguage === 'zh') {
                     isPreloadingNext = true;
-                    console.log(`🎯 第一段播放完成，现在开始预加载第二段`);
+                    console.log(`🎯 中文模式：第一段播放完成，现在开始预加载第二段`);
                     nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                 }
                 
@@ -1118,10 +1151,10 @@ class PDFReader {
                     await new Promise(resolve => setTimeout(resolve, 200));
                 }
                 
-                // 在第一段播放完成后才开始预加载第二段
-                if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext) {
+                // 中文模式：在第一段播放完成后才开始预加载第二段
+                if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext && selectedLanguage === 'zh') {
                     isPreloadingNext = true;
-                    console.log(`🎯 第一段播放完成，现在开始预加载第二段`);
+                    console.log(`🎯 中文模式：第一段播放完成，现在开始预加载第二段`);
                     nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                 }
             } catch (error) {
@@ -1154,7 +1187,7 @@ class PDFReader {
 
     async loadSegmentAudio(text, retryCount = 3) {
         // 获取选择的语言
-        const selectedLanguage = this.languageSelect.value;
+        const selectedLanguage = this.languageToggleBtn.dataset.language;
         
         // 生成唯一的请求ID用于调试
         const requestId = Math.random().toString(36).substring(2, 8);
