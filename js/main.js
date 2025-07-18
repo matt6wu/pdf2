@@ -163,6 +163,12 @@ class PDFReader {
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
         
+        // Logo点击回到主页
+        const logoContainer = document.getElementById('logoContainer');
+        if (logoContainer) {
+            logoContainer.addEventListener('click', () => this.goHome());
+        }
+        
         // 语言切换开关
         this.languageToggleBtn.addEventListener('change', () => this.toggleLanguage());
         
@@ -238,6 +244,22 @@ class PDFReader {
         this.uploadDropZone.addEventListener('dragleave', (e) => this.handleUploadDragLeave(e));
         this.uploadDropZone.addEventListener('drop', (e) => this.handleUploadDrop(e));
         this.uploadDropZone.addEventListener('click', () => this.uploadFileInput.click());
+        
+        // iPad/移动设备兼容 - 添加触摸事件
+        this.uploadDropZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.uploadFileInput.click();
+        });
+        
+        this.selectUploadFile.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.uploadFileInput.click();
+        });
+        
+        this.uploadBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.showUploadModal();
+        });
 
         // 键盘快捷键
         document.addEventListener('keydown', (e) => this.handleKeyPress(e));
@@ -452,6 +474,12 @@ class PDFReader {
     }
 
     async loadPDF(file) {
+        // 停止当前播放会话
+        if (this.isReading) {
+            console.log('📚 上传新书，停止当前播放会话');
+            this.stopReading();
+        }
+        
         this.showLoading();
         
         try {
@@ -923,8 +951,43 @@ class PDFReader {
     }
 
     goHome() {
-        // 刷新当前页面
-        location.reload();
+        // 停止当前播放
+        if (this.isReading) {
+            this.stopReading();
+        }
+        
+        // 清理当前PDF状态
+        this.pdfDoc = null;
+        this.pageCount = 0;
+        this.pageNum = 1;
+        this.currentBookId = null;
+        this.currentBookName = null;
+        this.currentPDFData = null;
+        
+        // 显示上传界面，隐藏PDF阅读器
+        this.dropZone.style.display = 'flex';
+        this.pdfViewer.style.display = 'none';
+        
+        // 重置缩放
+        this.scale = 1.5;
+        this.updateZoomLevel();
+        this.updateSliderPosition();
+        
+        // 清空画布
+        if (this.canvas) {
+            const ctx = this.canvas.getContext('2d');
+            ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+        
+        // 清空缩略图
+        if (this.thumbnailContainer) {
+            this.thumbnailContainer.innerHTML = '';
+        }
+        
+        // 重置导航按钮
+        this.updateNavigationButtons();
+        
+        console.log('🏠 已返回主页上传状态');
     }
     
     toggleLanguage() {
@@ -1287,6 +1350,9 @@ class PDFReader {
                 this.generateThumbnails();
                 this.updatePageInfo();
                 this.updateNavigationButtons();
+                
+                // 自动检测语言并设置语言选择开关
+                await this.autoDetectAndSetLanguage();
                 
                 // 移除通知
                 const notification = document.querySelector('.restore-pdf-notification');
@@ -2236,6 +2302,11 @@ class PDFReader {
         
         // 更新进度信息
         this.updateReadingProgress();
+        
+        // 立即高亮第一句
+        if (segments.length > 0) {
+            this.updateReadingContentPanel(0, segments[0]);
+        }
         
         // 根据最小化状态决定显示方式
         if (this.isReadingPanelMinimized) {

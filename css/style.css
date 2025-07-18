@@ -5,6 +5,20 @@
     box-sizing: border-box;
 }
 
+/* 移动设备触摸优化 */
+@media (hover: none) and (pointer: coarse) {
+    .control-btn, .upload-drop-zone, .select-upload-file {
+        -webkit-tap-highlight-color: rgba(0, 123, 255, 0.2);
+        touch-action: manipulation;
+        cursor: pointer;
+    }
+    
+    .control-btn:active, .upload-drop-zone:active, .select-upload-file:active {
+        transform: scale(0.95);
+        transition: transform 0.1s ease;
+    }
+}
+
 /* 朗读内容显示框样式 */
 .reading-content-panel {
     position: fixed;
