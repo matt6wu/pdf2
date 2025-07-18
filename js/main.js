@@ -61,6 +61,7 @@ class PDFReader {
         this.zoomOutBtn = document.getElementById('zoomOut');
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
         this.fitToWidthBtn = document.getElementById('fitToWidth');
+        console.log('🔍 fitToWidthBtn 元素:', this.fitToWidthBtn);
         this.resizeHandle = document.getElementById('resizeHandle');
         this.zoomSlider = document.getElementById('zoomSlider');
         this.progressBar = document.getElementById('progressBar');
@@ -120,7 +121,10 @@ class PDFReader {
         this.toggleSidebarBtn.addEventListener('click', () => this.toggleSidebar());
         
         // 适应屏幕宽度
-        this.fitToWidthBtn.addEventListener('click', () => this.fitToWidth());
+        this.fitToWidthBtn.addEventListener('click', () => {
+            console.log('🖱️ Fit按钮被点击');
+            this.fitToWidth();
+        });
         
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
@@ -600,21 +604,42 @@ class PDFReader {
     }
 
     fitToWidth() {
-        if (!this.pdf) return;
+        console.log('🔍 fitToWidth 函数被调用');
+        
+        if (!this.pdfDoc) {
+            console.log('❌ PDF未加载，退出fitToWidth');
+            return;
+        }
+        
+        console.log(`📄 当前页码: ${this.pageNum}`);
+        console.log(`📏 容器宽度: ${this.viewerContainer.clientWidth}px`);
         
         // 获取当前页面
-        this.pdf.getPage(this.pageNum).then(page => {
+        this.pdfDoc.getPage(this.pageNum).then(page => {
+            console.log('✅ 成功获取PDF页面');
+            
             const viewport = page.getViewport({ scale: 1.0 });
+            console.log(`📖 页面原始宽度: ${viewport.width}px`);
+            console.log(`📖 页面原始高度: ${viewport.height}px`);
+            
             const availableWidth = this.viewerContainer.clientWidth - 80; // 减去边距
+            console.log(`📏 可用宽度: ${availableWidth}px`);
+            
             const newScale = availableWidth / viewport.width;
+            console.log(`🔢 计算的缩放比例: ${newScale.toFixed(3)}`);
             
             // 限制缩放范围
+            const oldScale = this.scale;
             this.scale = Math.max(0.3, Math.min(3.0, newScale));
+            console.log(`🎯 旧缩放: ${oldScale.toFixed(3)}, 新缩放: ${this.scale.toFixed(3)}`);
+            
             this.renderPage(this.pageNum);
             this.updateZoomLevel();
             this.updateSliderPosition();
             
-            console.log(`📐 适应屏幕宽度: ${Math.round(this.scale * 100)}%`);
+            console.log(`📐 适应屏幕宽度完成: ${Math.round(this.scale * 100)}%`);
+        }).catch(error => {
+            console.error('❌ fitToWidth 错误:', error);
         });
     }
 
