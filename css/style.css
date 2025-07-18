@@ -224,6 +224,68 @@
     100% { transform: translateX(100%); }
 }
 
+/* TTS加载指示器样式 */
+.tts-loading-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 1rem;
+    background: linear-gradient(135deg, #ffeaa7, #fdcb6e);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    border: 2px solid #fdcb6e;
+    animation: ttsLoadingPulse 2s infinite;
+}
+
+@keyframes ttsLoadingPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(253, 203, 110, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(253, 203, 110, 0);
+    }
+}
+
+.loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spinner-hourglass {
+    font-size: 1.5rem;
+    animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #d68910;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 浮标加载状态 */
+.floating-widget-loading {
+    animation: pulseFloat 1.5s infinite;
+}
+
+@keyframes pulseFloat {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 12px 30px rgba(255, 234, 167, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+}
+
 @keyframes pulse {
     0% { transform: scale(1); }
     50% { transform: scale(1.05); }
@@ -716,8 +778,8 @@ body {
 }
 
 #stopReadingBtn {
-    background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
-    border-color: #ff9a9e;
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    border-color: #dc3545;
     font-size: 1.2rem !important;
     opacity: 0.6;
     transition: all 0.3s ease;
@@ -728,24 +790,24 @@ body {
 }
 
 #stopReadingBtn:hover {
-    background: linear-gradient(135deg, #ff8a8e 0%, #fdbddf 100%);
-    border-color: #ff8a8e;
+    background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+    border-color: #c82333;
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(255, 154, 158, 0.4);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
     opacity: 1;
 }
 
 #stopReadingBtn.active {
     opacity: 1;
-    background: linear-gradient(135deg, #ff8a8e 0%, #fdbddf 100%);
-    border-color: #ff8a8e;
+    background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+    border-color: #c82333;
 }
 
 #stopReadingBtn.active:hover {
-    background: linear-gradient(135deg, #ff7a7e 0%, #fcadcf 100%);
-    border-color: #ff7a7e;
+    background: linear-gradient(135deg, #a71e2a 0%, #8b1a21 100%);
+    border-color: #a71e2a;
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(255, 122, 126, 0.4);
+    box-shadow: 0 4px 12px rgba(167, 30, 42, 0.4);
 }
 
 #goToReadingPageBtn {

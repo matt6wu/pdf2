@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MPDF - Modern PDF Reader</title>
-    <link rel="stylesheet" href="css/style.css?v=55">
+    <link rel="stylesheet" href="css/style.css?v=57">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf_viewer.min.css">
 </head>
 <body>
@@ -101,6 +101,13 @@
                         </div>
                         <div class="reading-panel-body">
                             <div id="readingText" class="reading-text"></div>
+                            <!-- TTS加载指示器 -->
+                            <div id="ttsLoadingIndicator" class="tts-loading-indicator" style="display: none;">
+                                <div class="loading-spinner">
+                                    <div class="spinner-hourglass">⏳</div>
+                                </div>
+                                <div class="loading-text">正在生成语音...</div>
+                            </div>
                             <div class="reading-progress">
                                 <div class="reading-progress-info">
                                     <span id="currentSegment">段落 1</span>
@@ -116,10 +123,10 @@
                     <!-- 朗读浮标 -->
                     <div id="readingFloatingWidget" class="reading-floating-widget" style="display: none;">
                         <div class="floating-widget-content">
-                            <div class="floating-widget-icon">🎧</div>
+                            <div class="floating-widget-icon" id="floatingWidgetIcon">🎧</div>
                             <div class="floating-widget-text">
-                                <div class="floating-widget-title">正在朗读</div>
-                                <div class="floating-widget-progress">
+                                <div class="floating-widget-title" id="floatingWidgetTitle">正在朗读</div>
+                                <div class="floating-widget-progress" id="floatingWidgetProgress">
                                     <span id="floatingCurrentSegment">段落 1</span>
                                     <span id="floatingTotalSegments">共 1 段</span>
                                 </div>
@@ -200,6 +207,6 @@
     </div>
 
     <script src="lib/build/pdf.mjs" type="module"></script>
-    <script src="js/main.js?v=66" type="module"></script>
+    <script src="js/main.js?v=69" type="module"></script>
 </body>
 </html>

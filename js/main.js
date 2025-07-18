@@ -96,6 +96,12 @@ class PDFReader {
         this.floatingCurrentSegment = document.getElementById('floatingCurrentSegment');
         this.floatingTotalSegments = document.getElementById('floatingTotalSegments');
         
+        // TTS加载指示器相关元素
+        this.ttsLoadingIndicator = document.getElementById('ttsLoadingIndicator');
+        this.floatingWidgetIcon = document.getElementById('floatingWidgetIcon');
+        this.floatingWidgetTitle = document.getElementById('floatingWidgetTitle');
+        this.floatingWidgetProgress = document.getElementById('floatingWidgetProgress');
+        
         // 时间统计相关元素
         this.timeTrackingWidget = document.getElementById('timeTrackingWidget');
         this.timeTrackingMiniWidget = document.getElementById('timeTrackingMiniWidget');
@@ -1669,7 +1675,8 @@ class PDFReader {
                 isPreloadingNext = false;
             } else {
                 console.log(`📡 现场加载第 ${i+1} 段音频`);
-                audioPromise = this.loadSegmentAudio(segments[i]);
+                // 只在第一段时显示加载指示器
+                audioPromise = this.loadSegmentAudio(segments[i], 3, i === 0);
             }
             
             // 只在非第一段时才预加载下一段（第一段不预加载，让它专心播放）
@@ -1732,6 +1739,18 @@ class PDFReader {
             } catch (error) {
                 console.error(`❌ 第 ${i+1} 段播放失败:`, error);
                 
+                // 检查是否是因为停止状态而导致的错误
+                if (!this.isReading) {
+                    console.log('🛑 检测到停止状态，退出播放循环');
+                    break;
+                }
+                
+                // 如果是停止错误，退出播放循环
+                if (error.message && error.message.includes('朗读已停止')) {
+                    console.log('🛑 检测到停止信号，退出播放循环');
+                    break;
+                }
+                
                 // 如果是前几段失败，尝试重启TTS服务
                 if (i < 2) {
                     console.log('🔄 检测到早期段落失败，可能需要重启TTS服务');
@@ -1757,13 +1776,24 @@ class PDFReader {
         }
     }
 
-    async loadSegmentAudio(text, retryCount = 3) {
+    async loadSegmentAudio(text, retryCount = 3, showLoadingIndicator = false) {
+        // 在开始加载前检查是否已停止
+        if (!this.isReading) {
+            console.log(`🛑 [loadSegmentAudio] 朗读已停止，取消音频加载`);
+            throw new Error('朗读已停止');
+        }
+        
         // 获取选择的语言
         const selectedLanguage = this.languageToggleBtn.dataset.language;
         
         // 生成唯一的请求ID用于调试
         const requestId = Math.random().toString(36).substring(2, 8);
         console.log(`🔍 [${requestId}] 开始加载音频 - 语言: ${selectedLanguage}, 文本: "${text.substring(0, 30)}..."`);
+        
+        // 只在需要时显示加载指示器（通常是第一段）
+        if (showLoadingIndicator) {
+            this.showTTSLoadingIndicator();
+        }
         
         let ttsUrl;
         
@@ -1777,6 +1807,15 @@ class PDFReader {
         
         for (let attempt = 1; attempt <= retryCount; attempt++) {
             try {
+                // 在每次尝试前检查是否已停止
+                if (!this.isReading) {
+                    console.log(`🛑 [${requestId}] 朗读已停止，取消第 ${attempt} 次尝试`);
+                    if (showLoadingIndicator) {
+                        this.hideTTSLoadingIndicator();
+                    }
+                    throw new Error('朗读已停止');
+                }
+                
                 console.log(`📡 [${requestId}] 正在生成${selectedLanguage === 'zh' ? '中文' : '英文'}语音 (尝试 ${attempt}/${retryCount})...`);
                 
                 let response;
@@ -1808,17 +1847,52 @@ class PDFReader {
                 const audioBlob = await response.blob();
                 console.log(`🎵 [${requestId}] ${selectedLanguage === 'zh' ? '中文' : '英文'}音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
                 
+                // 在返回前最后检查一次是否已停止
+                if (!this.isReading) {
+                    console.log(`🛑 [${requestId}] 音频生成完成但朗读已停止，丢弃音频数据`);
+                    if (showLoadingIndicator) {
+                        this.hideTTSLoadingIndicator();
+                    }
+                    throw new Error('朗读已停止');
+                }
+                
+                // 只在显示了加载指示器的情况下才隐藏
+                if (showLoadingIndicator) {
+                    this.hideTTSLoadingIndicator();
+                }
                 return audioBlob;
                 
             } catch (error) {
                 console.warn(`⚠️ [${requestId}] 第 ${attempt} 次尝试失败:`, error.message);
                 
+                // 检查是否是因为停止状态而导致的错误
+                if (!this.isReading || (error.message && error.message.includes('朗读已停止'))) {
+                    console.log(`🛑 [${requestId}] 检测到停止状态，取消重试`);
+                    if (showLoadingIndicator) {
+                        this.hideTTSLoadingIndicator();
+                    }
+                    throw new Error('朗读已停止');
+                }
+                
                 if (attempt === retryCount) {
+                    // 最后一次尝试失败时，只在显示了加载指示器的情况下才隐藏
+                    if (showLoadingIndicator) {
+                        this.hideTTSLoadingIndicator();
+                    }
                     throw error;
                 }
                 
-                // 重试前等待一段时间
+                // 重试前等待一段时间（同时检查是否被停止）
                 await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                
+                // 在重试前再次检查是否已停止
+                if (!this.isReading) {
+                    console.log(`🛑 [${requestId}] 重试等待期间检测到停止状态，取消重试`);
+                    if (showLoadingIndicator) {
+                        this.hideTTSLoadingIndicator();
+                    }
+                    throw new Error('朗读已停止');
+                }
             }
         }
     }
@@ -1915,6 +1989,10 @@ class PDFReader {
     stopReading() {
         console.log('🛑 执行彻底停止朗读操作');
         
+        // 立即设置停止状态，防止新的音频加载
+        this.isReading = false;
+        this.isPaused = false;
+        
         // 停止所有音频实例
         this.allAudios.forEach((audio, index) => {
             if (audio) {
@@ -1939,9 +2017,8 @@ class PDFReader {
         // 清除悬停定时器
         this.clearHoverTimeout();
         
-        // 重置状态
-        this.isReading = false;
-        this.isPaused = false;
+        // 强制隐藏TTS加载指示器
+        this.hideTTSLoadingIndicator();
         this.currentSegmentIndex = 0;
         this.totalSegmentCount = 0;
         this.readingPageNum = 1; // 重置朗读页码
@@ -2119,9 +2196,11 @@ class PDFReader {
         // 始终更新段落索引，即使面板隐藏（为了浮标能正确显示）
         this.currentSegmentIndex = segmentIndex;
         
-        // 如果面板隐藏，只更新进度信息，不更新面板内容
-        if (!this.readingContentPanel || this.readingContentPanel.style.display === 'none') {
-            this.updateReadingProgress();
+        // 始终更新进度信息
+        this.updateReadingProgress();
+        
+        // 如果面板或文本内容不存在，跳过文本高亮更新
+        if (!this.readingContentPanel || !this.readingText) {
             return;
         }
         
@@ -2138,8 +2217,10 @@ class PDFReader {
                 `<span id="currentHighlight" style="background-color: #007bff; color: white; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 1.1em;">${currentSegmentText}</span>` +
                 `<span style="color: #888; font-size: 0.9em;">${afterText}</span>`;
             
-            // 自动滚动到当前高亮段落
-            this.scrollToCurrentSegment();
+            // 只有当面板可见时才滚动到当前高亮段落
+            if (this.readingContentPanel.style.display !== 'none') {
+                this.scrollToCurrentSegment();
+            }
         }
         
         // 更新进度
@@ -2227,6 +2308,12 @@ class PDFReader {
             this.readingContentPanel.style.display = 'block';
             // 取消最小化状态
             this.isReadingPanelMinimized = false;
+            
+            // 展开后滚动到当前高亮段落
+            setTimeout(() => {
+                this.scrollToCurrentSegment();
+            }, 100); // 稍微延迟一下确保面板完全显示
+            
             console.log('📋 朗读内容框已从浮标展开');
         }
     }
@@ -2256,6 +2343,46 @@ class PDFReader {
             this.floatingTotalSegments.textContent = this.totalSegments.textContent;
             console.log('📋 浮标进度已同步:', this.currentSegment.textContent, this.totalSegments.textContent);
         }
+    }
+
+    // 显示TTS加载指示器
+    showTTSLoadingIndicator() {
+        // 显示朗读面板中的加载指示器
+        if (this.ttsLoadingIndicator) {
+            this.ttsLoadingIndicator.style.display = 'flex';
+        }
+        
+        // 更新浮标显示加载状态
+        if (this.floatingWidgetIcon && this.floatingWidgetTitle && this.floatingWidgetProgress) {
+            this.floatingWidgetIcon.textContent = '⏳';
+            this.floatingWidgetTitle.textContent = '生成语音中...';
+            this.floatingWidgetProgress.style.display = 'none';
+            
+            // 添加加载动画
+            this.readingFloatingWidget.classList.add('floating-widget-loading');
+        }
+        
+        console.log('🎵 TTS加载指示器已显示');
+    }
+
+    // 隐藏TTS加载指示器
+    hideTTSLoadingIndicator() {
+        // 隐藏朗读面板中的加载指示器
+        if (this.ttsLoadingIndicator) {
+            this.ttsLoadingIndicator.style.display = 'none';
+        }
+        
+        // 恢复浮标正常状态
+        if (this.floatingWidgetIcon && this.floatingWidgetTitle && this.floatingWidgetProgress) {
+            this.floatingWidgetIcon.textContent = '🎧';
+            this.floatingWidgetTitle.textContent = '正在朗读';
+            this.floatingWidgetProgress.style.display = 'flex';
+            
+            // 移除加载动画
+            this.readingFloatingWidget.classList.remove('floating-widget-loading');
+        }
+        
+        console.log('🎵 TTS加载指示器已隐藏');
     }
 
     // 设置朗读内容框拖拽功能
