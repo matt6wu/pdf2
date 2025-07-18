@@ -41,6 +41,7 @@ class PDFReader {
         this.initDB();
         this.setupEventListeners();
         this.setupWindowResize();
+        this.initializeLanguageSwitch();
     }
 
     initializeElements() {
@@ -68,6 +69,7 @@ class PDFReader {
         this.stopReadingBtn = document.getElementById('stopReadingBtn');
         this.goToReadingPageBtn = document.getElementById('goToReadingPageBtn');
         this.languageToggleBtn = document.getElementById('languageToggleBtn');
+        this.languageSwitchContainer = document.querySelector('.language-switch-container');
         this.readingContentPanel = document.getElementById('readingContentPanel');
         this.readingText = document.getElementById('readingText');
         this.currentSegment = document.getElementById('currentSegment');
@@ -119,8 +121,8 @@ class PDFReader {
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
         
-        // 语言切换按钮
-        this.languageToggleBtn.addEventListener('click', () => this.toggleLanguage());
+        // 语言切换开关
+        this.languageToggleBtn.addEventListener('change', () => this.toggleLanguage());
         
         // 朗读按钮 - 智能触发（根据状态决定是否支持悬停）
         this.readAloudBtn.addEventListener('mouseenter', () => this.handleHoverTrigger());
@@ -761,12 +763,13 @@ class PDFReader {
     }
     
     toggleLanguage() {
+        const isChecked = this.languageToggleBtn.checked;
+        const newLanguage = isChecked ? 'en' : 'zh';
         const currentLanguage = this.languageToggleBtn.dataset.language;
-        const newLanguage = currentLanguage === 'zh' ? 'en' : 'zh';
         
-        // 更新按钮状态
+        // 更新开关状态
         this.languageToggleBtn.dataset.language = newLanguage;
-        this.languageToggleBtn.textContent = newLanguage === 'zh' ? '中' : 'ENG';
+        this.languageSwitchContainer.dataset.active = newLanguage;
         
         console.log(`🌍 语言切换: ${currentLanguage} → ${newLanguage}`);
         
@@ -775,6 +778,14 @@ class PDFReader {
             console.log('🔄 语言切换时停止当前朗读');
             this.forceStopReading();
         }
+    }
+
+    initializeLanguageSwitch() {
+        // 设置默认语言为中文
+        this.languageToggleBtn.checked = false;
+        this.languageToggleBtn.dataset.language = 'zh';
+        this.languageSwitchContainer.dataset.active = 'zh';
+        console.log('🌍 语言开关初始化: 默认中文');
     }
 
     // 阅读记忆功能相关方法
