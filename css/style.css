@@ -437,6 +437,89 @@ body {
     }
 }
 
+/* PDF恢复通知样式 */
+.restore-pdf-notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.5);
+    z-index: 10000;
+    animation: slideIn 0.3s ease-out;
+    font-size: 14px;
+    max-width: 400px;
+    min-width: 350px;
+}
+
+.restore-pdf-content {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.restore-pdf-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.restore-pdf-info {
+    flex: 1;
+}
+
+.restore-pdf-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.restore-pdf-name {
+    font-size: 14px;
+    opacity: 0.9;
+    word-break: break-all;
+}
+
+.restore-pdf-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.restore-pdf-btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.restore-pdf-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.restore-pdf-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+}
+
+.restore-pdf-close:hover {
+    opacity: 1;
+}
+
 .control-btn {
     border: none;
     color: white;

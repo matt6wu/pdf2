@@ -31,7 +31,14 @@ class PDFReader {
         this.currentBookName = null; // 当前书籍名称
         this.readingMemoryEnabled = true; // 阅读记忆功能开关
         
+        // PDF本地存储功能
+        this.dbName = 'PDFReaderDB';
+        this.dbVersion = 1;
+        this.db = null;
+        this.currentPDFData = null; // 当前PDF的二进制数据
+        
         this.initializeElements();
+        this.initDB();
         this.setupEventListeners();
         this.setupWindowResize();
     }
@@ -75,6 +82,8 @@ class PDFReader {
         console.log('goToReadingPageBtn:', this.goToReadingPageBtn);
         console.log('readingContentPanel:', this.readingContentPanel);
         console.log('readingText:', this.readingText);
+        console.log('dropZone:', this.dropZone);
+        console.log('fileInput:', this.fileInput);
         this.uploadModal = document.getElementById('uploadModal');
         this.uploadDropZone = document.getElementById('uploadDropZone');
         this.uploadFileInput = document.getElementById('uploadFileInput');
@@ -347,7 +356,11 @@ class PDFReader {
         
         try {
             const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            // 创建两个独立的ArrayBuffer副本，一个用于PDF.js，一个用于存储
+            const pdfDataForPDFJS = arrayBuffer.slice();
+            const pdfDataForStorage = arrayBuffer.slice();
+            
+            const pdf = await pdfjsLib.getDocument({ data: pdfDataForPDFJS }).promise;
             
             this.pdfDoc = pdf;
             this.pageCount = pdf.numPages;
@@ -356,6 +369,7 @@ class PDFReader {
             // 设置书籍信息用于记忆功能
             this.currentBookName = file.name;
             this.currentBookId = this.generateBookId(file.name, file.size);
+            this.currentPDFData = pdfDataForStorage; // 保存PDF数据用于本地存储
             console.log(`📚 加载书籍: ${this.currentBookName} (ID: ${this.currentBookId})`);
             
             // 检查是否有阅读记录
@@ -379,6 +393,11 @@ class PDFReader {
             this.generateThumbnails();
             this.updatePageInfo();
             this.updateNavigationButtons();
+            
+            // 延迟保存PDF到本地存储，确保所有处理完成
+            setTimeout(() => {
+                this.savePDFToLocal(file, this.currentPDFData);
+            }, 500);
             
         } catch (error) {
             console.error('加载PDF失败:', error);
@@ -824,8 +843,14 @@ class PDFReader {
         try {
             console.log(`🔄 恢复阅读位置: 第${progress.currentPage}页`);
             
+            // 确保页码在有效范围内
+            const targetPage = Math.min(Math.max(1, progress.currentPage), this.pageCount);
+            if (targetPage !== progress.currentPage) {
+                console.log(`⚠️ 页码超出范围，调整为第${targetPage}页`);
+            }
+            
             // 恢复页码
-            this.pageNum = progress.currentPage;
+            this.pageNum = targetPage;
             
             // 恢复缩放比例
             if (progress.scale) {
@@ -834,7 +859,7 @@ class PDFReader {
             }
             
             // 渲染页面
-            await this.renderPage();
+            await this.renderPage(this.pageNum);
             
             // 恢复滚动位置
             if (progress.scrollPosition) {
@@ -881,6 +906,222 @@ class PDFReader {
         } catch (error) {
             console.error('❌ 获取保存的书籍列表失败:', error);
             return [];
+        }
+    }
+
+    // IndexedDB相关方法
+    async initDB() {
+        try {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(this.dbName, this.dbVersion);
+                
+                request.onerror = () => {
+                    console.error('❌ IndexedDB打开失败:', request.error);
+                    reject(request.error);
+                };
+                
+                request.onsuccess = () => {
+                    this.db = request.result;
+                    console.log('✅ IndexedDB初始化成功');
+                    resolve(this.db);
+                    
+                    // 初始化完成后检查是否有保存的PDF
+                    this.checkForSavedPDF();
+                };
+                
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    
+                    // 创建PDF存储对象存储
+                    if (!db.objectStoreNames.contains('pdfs')) {
+                        const pdfStore = db.createObjectStore('pdfs', { keyPath: 'id' });
+                        pdfStore.createIndex('name', 'name', { unique: false });
+                        pdfStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+                    }
+                };
+            });
+        } catch (error) {
+            console.error('❌ IndexedDB初始化失败:', error);
+        }
+    }
+
+    async savePDFToLocal(file, pdfData) {
+        if (!this.db) return;
+        
+        try {
+            // 再次确保数据的完整性
+            const dataToStore = pdfData instanceof ArrayBuffer ? pdfData : pdfData.slice();
+            
+            const transaction = this.db.transaction(['pdfs'], 'readwrite');
+            const store = transaction.objectStore('pdfs');
+            
+            const pdfRecord = {
+                id: this.currentBookId,
+                name: this.currentBookName,
+                data: dataToStore,
+                size: file.size,
+                lastAccessed: new Date().toISOString(),
+                mimeType: file.type
+            };
+            
+            const request = store.put(pdfRecord);
+            
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => {
+                    console.log(`💾 PDF已保存到本地: ${this.currentBookName}`);
+                    resolve();
+                };
+                
+                request.onerror = () => {
+                    console.error('❌ PDF保存失败:', request.error);
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('❌ PDF保存失败:', error);
+        }
+    }
+
+    async loadPDFFromLocal(bookId) {
+        if (!this.db) return null;
+        
+        try {
+            const transaction = this.db.transaction(['pdfs'], 'readonly');
+            const store = transaction.objectStore('pdfs');
+            const request = store.get(bookId);
+            
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => {
+                    const result = request.result;
+                    if (result) {
+                        console.log(`📖 从本地加载PDF: ${result.name}`);
+                        resolve(result);
+                    } else {
+                        resolve(null);
+                    }
+                };
+                
+                request.onerror = () => {
+                    console.error('❌ PDF加载失败:', request.error);
+                    reject(request.error);
+                };
+            });
+        } catch (error) {
+            console.error('❌ PDF加载失败:', error);
+            return null;
+        }
+    }
+
+    async checkForSavedPDF() {
+        if (!this.db) return;
+        
+        try {
+            const transaction = this.db.transaction(['pdfs'], 'readonly');
+            const store = transaction.objectStore('pdfs');
+            const index = store.index('lastAccessed');
+            const request = index.openCursor(null, 'prev'); // 按最后访问时间倒序
+            
+            request.onsuccess = async (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    const pdfRecord = cursor.value;
+                    console.log(`🔍 发现保存的PDF: ${pdfRecord.name}`);
+                    
+                    try {
+                        // 直接自动加载最后一次的PDF
+                        await this.restoreLastPDF(pdfRecord.id);
+                    } catch (error) {
+                        console.error('❌ 自动加载PDF失败，显示拖拽界面:', error);
+                        // 如果自动加载失败，确保显示拖拽界面
+                        this.dropZone.style.display = 'flex';
+                        this.pdfViewer.style.display = 'none';
+                    }
+                } else {
+                    console.log('📝 没有找到保存的PDF，显示拖拽界面');
+                    // 没有保存的PDF，显示拖拽界面
+                    this.dropZone.style.display = 'flex';
+                    this.pdfViewer.style.display = 'none';
+                }
+            };
+        } catch (error) {
+            console.error('❌ 检查保存的PDF失败:', error);
+        }
+    }
+
+    showRestoreLastPDFOption(pdfRecord) {
+        const notification = document.createElement('div');
+        notification.className = 'restore-pdf-notification';
+        notification.innerHTML = `
+            <div class="restore-pdf-content">
+                <span class="restore-pdf-icon">📚</span>
+                <div class="restore-pdf-info">
+                    <div class="restore-pdf-title">继续阅读上次的PDF</div>
+                    <div class="restore-pdf-name">${pdfRecord.name}</div>
+                </div>
+                <div class="restore-pdf-actions">
+                    <button class="restore-pdf-btn" onclick="pdfReader.restoreLastPDF('${pdfRecord.id}')">继续阅读</button>
+                    <button class="restore-pdf-close" onclick="this.parentElement.parentElement.parentElement.remove()">×</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // 10秒后自动消失
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 10000);
+    }
+
+    async restoreLastPDF(bookId) {
+        try {
+            const pdfRecord = await this.loadPDFFromLocal(bookId);
+            if (pdfRecord) {
+                // 设置书籍信息
+                this.currentBookId = pdfRecord.id;
+                this.currentBookName = pdfRecord.name;
+                this.currentPDFData = pdfRecord.data;
+                
+                // 加载PDF
+                const pdf = await pdfjsLib.getDocument({ data: pdfRecord.data }).promise;
+                this.pdfDoc = pdf;
+                this.pageCount = pdf.numPages;
+                this.pageNum = 1;
+                
+                // 获取阅读进度
+                const savedProgress = this.loadReadingProgress(this.currentBookId);
+                
+                // 隐藏拖拽区域，显示PDF阅读器
+                this.dropZone.style.display = 'none';
+                this.pdfViewer.style.display = 'flex';
+                
+                this.adjustPDFScale();
+                this.updateZoomLevel();
+                this.updateSliderPosition();
+                
+                // 恢复阅读位置
+                if (savedProgress) {
+                    await this.restoreReadingPosition(savedProgress);
+                } else {
+                    await this.renderPage(1);
+                }
+                
+                this.generateThumbnails();
+                this.updatePageInfo();
+                this.updateNavigationButtons();
+                
+                // 移除通知
+                const notification = document.querySelector('.restore-pdf-notification');
+                if (notification) {
+                    notification.remove();
+                }
+                
+                console.log(`✅ 成功恢复PDF: ${pdfRecord.name}`);
+            }
+        } catch (error) {
+            console.error('❌ 恢复PDF失败:', error);
         }
     }
 
@@ -1920,7 +2161,9 @@ class PDFReader {
 document.addEventListener('DOMContentLoaded', () => {
     const pdfReader = new PDFReader();
     
+    // 将实例设置为全局变量，供HTML内联事件使用
+    window.pdfReader = pdfReader;
+    
     // 将测试方法暴露到全局作用域，便于在浏览器控制台测试
     window.testTextExtraction = () => pdfReader.testTextExtraction();
-    window.pdfReader = pdfReader;
 });
