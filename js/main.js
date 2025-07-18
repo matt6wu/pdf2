@@ -1473,9 +1473,9 @@ class PDFReader {
         // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
         const selectedLanguage = this.languageToggleBtn.dataset.language;
         if (maxLength === null) {
-            maxLength = selectedLanguage === 'zh' ? 60 : 300; // 中文保持60字符，英文增加到300字符
+            maxLength = selectedLanguage === 'zh' ? 100 : 300; // 中文调整为100字符，英文保持300字符
         }
-        const minLength = selectedLanguage === 'zh' ? 20 : 100; // 中文保持20字符，英文最小100字符
+        const minLength = selectedLanguage === 'zh' ? 30 : 100; // 中文调整为30字符，英文最小100字符
         console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}, 最小长度: ${minLength}`);
         const segments = [];
         
@@ -1692,17 +1692,11 @@ class PDFReader {
                 }, 500); // 延迟0.5秒
                 
                 this.preloadTimeouts.push(timeoutId);
-            } else if (i === 0) {
-                // 根据语言选择不同的预加载策略
-                if (selectedLanguage === 'en' && i + 1 < segments.length && this.isReading && !this.isPaused) {
-                    // 英文：第一段播放开始时立即预加载第二段
-                    isPreloadingNext = true;
-                    console.log(`🎯 英文模式：第一段播放开始，立即预加载第二段`);
-                    nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
-                } else {
-                    // 中文：第一段专心播放，不预加载
-                    console.log(`🎯 中文模式：第一段专心播放，不预加载`);
-                }
+            } else if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused) {
+                // 第一段播放时立即预加载第二段（中文和英文都预加载）
+                isPreloadingNext = true;
+                console.log(`🎯 第一段播放开始，立即预加载第二段`);
+                nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
             }
             
             try {
