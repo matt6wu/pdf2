@@ -650,7 +650,7 @@ body {
 #readAloudBtn {
     background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     border-color: #f093fb;
-    font-size: 1rem;
+    font-size: 1.2rem;
     position: relative;
 }
 
@@ -690,7 +690,7 @@ body {
 #stopReadingBtn {
     background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
     border-color: #ff9a9e;
-    font-size: 1rem;
+    font-size: 1.2rem;
     opacity: 0.6;
     transition: all 0.3s ease;
 }
