@@ -25,6 +25,7 @@ class PDFReader {
         this.readingPageNum = 1; // 当前朗读的页码
         this.currentSegmentIndex = 0; // 当前朗读段落索引
         this.totalSegmentCount = 0; // 总段落数
+        this.currentRenderTask = null; // 当前渲染任务
         
         // 阅读记忆功能
         this.currentBookId = null; // 当前书籍ID
@@ -421,6 +422,12 @@ class PDFReader {
             return;
         }
 
+        // 取消之前的渲染任务
+        if (this.currentRenderTask) {
+            this.currentRenderTask.cancel();
+            this.currentRenderTask = null;
+        }
+
         try {
             // 如果需要滚动到顶部，在渲染前立即设置
             if (scrollToTop && this.pdfContainer) {
@@ -461,7 +468,10 @@ class PDFReader {
             // 清空画布
             this.ctx.clearRect(0, 0, viewport.width, viewport.height);
             
-            await page.render(renderContext).promise;
+            // 创建渲染任务并保存引用
+            this.currentRenderTask = page.render(renderContext);
+            await this.currentRenderTask.promise;
+            this.currentRenderTask = null;
             this.pageNum = pageNumber;
             this.updatePageInfo();
             this.updateNavigationButtons();
@@ -612,7 +622,7 @@ class PDFReader {
         }
         
         console.log(`📄 当前页码: ${this.pageNum}`);
-        console.log(`📏 容器宽度: ${this.viewerContainer.clientWidth}px`);
+        console.log(`📏 容器宽度: ${this.pdfContainer.clientWidth}px`);
         
         // 获取当前页面
         this.pdfDoc.getPage(this.pageNum).then(page => {
@@ -622,7 +632,7 @@ class PDFReader {
             console.log(`📖 页面原始宽度: ${viewport.width}px`);
             console.log(`📖 页面原始高度: ${viewport.height}px`);
             
-            const availableWidth = this.viewerContainer.clientWidth - 80; // 减去边距
+            const availableWidth = this.pdfContainer.clientWidth - 80; // 减去边距
             console.log(`📏 可用宽度: ${availableWidth}px`);
             
             const newScale = availableWidth / viewport.width;
