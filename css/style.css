@@ -712,6 +712,8 @@ body {
 #stopReadingBtn.active:hover {
     background: linear-gradient(135deg, #ff7a7e 0%, #fcadcf 100%);
     border-color: #ff7a7e;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 122, 126, 0.4);
 }
 
 #goToReadingPageBtn {
