@@ -20,10 +20,16 @@ class PDFReader {
         this.allAudios = []; // 所有音频实例列表
         this.preloadTimeouts = []; // 预加载定时器列表
         this.hoverTimeout = null; // 悬停防抖定时器
+        this.scrollSaveTimeout = null; // 滚动保存防抖定时器
         this.autoNextPage = true; // 自动翻页开关
         this.readingPageNum = 1; // 当前朗读的页码
         this.currentSegmentIndex = 0; // 当前朗读段落索引
         this.totalSegmentCount = 0; // 总段落数
+        
+        // 阅读记忆功能
+        this.currentBookId = null; // 当前书籍ID
+        this.currentBookName = null; // 当前书籍名称
+        this.readingMemoryEnabled = true; // 阅读记忆功能开关
         
         this.initializeElements();
         this.setupEventListeners();
@@ -148,6 +154,9 @@ class PDFReader {
         
         // 滚轮翻页功能
         this.pdfContainer.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+        
+        // 滚动事件监听器，用于保存滚动位置
+        this.pdfContainer.addEventListener('scroll', () => this.handleScroll());
         
         // 侧边栏调整大小
         this.setupSidebarResize();
@@ -344,6 +353,14 @@ class PDFReader {
             this.pageCount = pdf.numPages;
             this.pageNum = 1;
             
+            // 设置书籍信息用于记忆功能
+            this.currentBookName = file.name;
+            this.currentBookId = this.generateBookId(file.name, file.size);
+            console.log(`📚 加载书籍: ${this.currentBookName} (ID: ${this.currentBookId})`);
+            
+            // 检查是否有阅读记录
+            const savedProgress = this.loadReadingProgress(this.currentBookId);
+            
             this.hideLoading();
             this.showPDFViewer();
             
@@ -351,7 +368,14 @@ class PDFReader {
             this.adjustPDFScale();
             this.updateZoomLevel(); // 显示当前缩放级别
             this.updateSliderPosition(); // 更新滑块位置
-            await this.renderPage(1);
+            
+            // 如果有阅读记录，恢复到上次位置；否则从第1页开始
+            if (savedProgress) {
+                await this.restoreReadingPosition(savedProgress);
+            } else {
+                await this.renderPage(1);
+            }
+            
             this.generateThumbnails();
             this.updatePageInfo();
             this.updateNavigationButtons();
@@ -414,6 +438,9 @@ class PDFReader {
             this.updateNavigationButtons();
             this.highlightCurrentThumbnail();
             this.updateGoToReadingPageButton(); // 更新回到朗读页面按钮状态
+            
+            // 保存阅读进度
+            this.saveReadingProgress();
             
             // 添加淡入效果
             if (showTransition) {
@@ -545,6 +572,17 @@ class PDFReader {
         this.scale = 1.5; // 重置到默认150%
         this.renderPage(this.pageNum);
         this.updateZoomLevel();
+    }
+
+    handleScroll() {
+        // 使用防抖机制，避免频繁保存
+        if (this.scrollSaveTimeout) {
+            clearTimeout(this.scrollSaveTimeout);
+        }
+        
+        this.scrollSaveTimeout = setTimeout(() => {
+            this.saveReadingProgress();
+        }, 1000); // 1秒后保存滚动位置
     }
 
     async handleWheel(event) {
@@ -717,6 +755,132 @@ class PDFReader {
         if (this.isReading) {
             console.log('🔄 语言切换时停止当前朗读');
             this.forceStopReading();
+        }
+    }
+
+    // 阅读记忆功能相关方法
+    generateBookId(fileName, fileSize) {
+        // 基于文件名和大小生成唯一ID
+        const hash = this.simpleHash(fileName + fileSize);
+        return `book_${hash}`;
+    }
+
+    simpleHash(str) {
+        // 简单的字符串hash函数
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // 转为32位整数
+        }
+        return Math.abs(hash).toString(36);
+    }
+
+    saveReadingProgress() {
+        if (!this.readingMemoryEnabled || !this.currentBookId) return;
+        
+        const progress = {
+            bookId: this.currentBookId,
+            bookName: this.currentBookName,
+            currentPage: this.pageNum,
+            totalPages: this.pageCount,
+            scrollPosition: this.pdfContainer.scrollTop,
+            lastReadTime: new Date().toISOString(),
+            scale: this.scale
+        };
+        
+        try {
+            const savedBooks = JSON.parse(localStorage.getItem('pdfReaderBooks') || '{}');
+            savedBooks[this.currentBookId] = progress;
+            localStorage.setItem('pdfReaderBooks', JSON.stringify(savedBooks));
+            
+            console.log(`📚 保存阅读进度: ${this.currentBookName} - 第${this.pageNum}页`);
+        } catch (error) {
+            console.error('❌ 保存阅读进度失败:', error);
+        }
+    }
+
+    loadReadingProgress(bookId) {
+        if (!this.readingMemoryEnabled || !bookId) return null;
+        
+        try {
+            const savedBooks = JSON.parse(localStorage.getItem('pdfReaderBooks') || '{}');
+            const progress = savedBooks[bookId];
+            
+            if (progress) {
+                console.log(`📖 找到阅读记录: ${progress.bookName} - 第${progress.currentPage}页`);
+                return progress;
+            }
+        } catch (error) {
+            console.error('❌ 加载阅读进度失败:', error);
+        }
+        
+        return null;
+    }
+
+    async restoreReadingPosition(progress) {
+        if (!progress) return;
+        
+        try {
+            console.log(`🔄 恢复阅读位置: 第${progress.currentPage}页`);
+            
+            // 恢复页码
+            this.pageNum = progress.currentPage;
+            
+            // 恢复缩放比例
+            if (progress.scale) {
+                this.scale = progress.scale;
+                this.updateZoomLevel();
+            }
+            
+            // 渲染页面
+            await this.renderPage();
+            
+            // 恢复滚动位置
+            if (progress.scrollPosition) {
+                setTimeout(() => {
+                    this.pdfContainer.scrollTop = progress.scrollPosition;
+                    console.log(`📍 恢复滚动位置: ${progress.scrollPosition}px`);
+                }, 100);
+            }
+            
+            // 显示恢复提示
+            this.showRestoreNotification(progress);
+            
+        } catch (error) {
+            console.error('❌ 恢复阅读位置失败:', error);
+        }
+    }
+
+    showRestoreNotification(progress) {
+        const notification = document.createElement('div');
+        notification.className = 'restore-notification';
+        notification.innerHTML = `
+            <div class="restore-content">
+                <span class="restore-icon">📖</span>
+                <span class="restore-text">已恢复到《${progress.bookName}》第${progress.currentPage}页</span>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // 3秒后自动消失
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+
+    getAllSavedBooks() {
+        try {
+            const savedBooks = JSON.parse(localStorage.getItem('pdfReaderBooks') || '{}');
+            return Object.values(savedBooks).sort((a, b) => 
+                new Date(b.lastReadTime) - new Date(a.lastReadTime)
+            );
+        } catch (error) {
+            console.error('❌ 获取保存的书籍列表失败:', error);
+            return [];
         }
     }
 
