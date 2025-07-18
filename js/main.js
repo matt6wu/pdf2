@@ -79,6 +79,14 @@ class PDFReader {
         this.totalSegments = document.getElementById('totalSegments');
         this.readingProgressFill = document.getElementById('readingProgressFill');
         this.closeReadingPanel = document.getElementById('closeReadingPanel');
+        this.minimizeReadingPanel = document.getElementById('minimizeReadingPanel');
+        
+        // 浮标相关元素
+        this.readingFloatingWidget = document.getElementById('readingFloatingWidget');
+        this.expandReadingPanel = document.getElementById('expandReadingPanel');
+        this.closeFloatingWidget = document.getElementById('closeFloatingWidget');
+        this.floatingCurrentSegment = document.getElementById('floatingCurrentSegment');
+        this.floatingTotalSegments = document.getElementById('floatingTotalSegments');
         
         // 调试：检查按钮是否正确获取
         console.log('🔍 按钮初始化检查:');
@@ -148,6 +156,15 @@ class PDFReader {
         
         // 朗读内容框关闭按钮
         this.closeReadingPanel.addEventListener('click', () => this.hideReadingContentPanel());
+        
+        // 朗读内容框最小化按钮
+        this.minimizeReadingPanel.addEventListener('click', () => this.minimizeReadingContentPanel());
+        
+        // 浮标展开按钮
+        this.expandReadingPanel.addEventListener('click', () => this.expandReadingContentPanel());
+        
+        // 浮标关闭按钮
+        this.closeFloatingWidget.addEventListener('click', () => this.hideFloatingWidget());
         
         // 朗读内容框拖拽功能
         this.setupReadingPanelDrag();
@@ -2100,6 +2117,9 @@ class PDFReader {
         const progress = this.totalSegmentCount > 0 ? 
             ((this.currentSegmentIndex + 1) / this.totalSegmentCount) * 100 : 0;
         this.readingProgressFill.style.width = `${progress}%`;
+        
+        // 同步浮标进度
+        this.syncFloatingWidgetProgress();
     }
 
     // 隐藏朗读内容框
@@ -2116,6 +2136,56 @@ class PDFReader {
             this.readingContentPanel.style.left = '50%';
             this.readingContentPanel.style.top = '50%';
             console.log('📋 朗读内容框已隐藏并清理');
+        }
+        // 同时隐藏浮标
+        this.hideFloatingWidget();
+    }
+
+    // 最小化朗读内容框到浮标
+    minimizeReadingContentPanel() {
+        if (this.readingContentPanel && this.readingContentPanel.style.display !== 'none') {
+            // 隐藏朗读面板
+            this.readingContentPanel.style.display = 'none';
+            // 显示浮标
+            this.showFloatingWidget();
+            console.log('📋 朗读内容框已最小化为浮标');
+        }
+    }
+
+    // 展开朗读内容框
+    expandReadingContentPanel() {
+        if (this.readingFloatingWidget && this.readingFloatingWidget.style.display !== 'none') {
+            // 隐藏浮标
+            this.readingFloatingWidget.style.display = 'none';
+            // 显示朗读面板
+            this.readingContentPanel.style.display = 'block';
+            console.log('📋 朗读内容框已从浮标展开');
+        }
+    }
+
+    // 显示浮标
+    showFloatingWidget() {
+        if (this.readingFloatingWidget) {
+            this.readingFloatingWidget.style.display = 'block';
+            // 同步进度信息
+            this.syncFloatingWidgetProgress();
+            console.log('📋 朗读浮标已显示');
+        }
+    }
+
+    // 隐藏浮标
+    hideFloatingWidget() {
+        if (this.readingFloatingWidget) {
+            this.readingFloatingWidget.style.display = 'none';
+            console.log('📋 朗读浮标已隐藏');
+        }
+    }
+
+    // 同步浮标进度信息
+    syncFloatingWidgetProgress() {
+        if (this.floatingCurrentSegment && this.floatingTotalSegments) {
+            this.floatingCurrentSegment.textContent = this.currentSegment.textContent;
+            this.floatingTotalSegments.textContent = this.totalSegments.textContent;
         }
     }
 

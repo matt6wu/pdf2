@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MPDF - Modern PDF Reader</title>
-    <link rel="stylesheet" href="css/style.css?v=51">
+    <link rel="stylesheet" href="css/style.css?v=52">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf_viewer.min.css">
 </head>
 <body>
@@ -94,7 +94,10 @@
                     <div id="readingContentPanel" class="reading-content-panel" style="display: none;">
                         <div class="reading-panel-header">
                             <span class="reading-panel-title">正在朗读</span>
-                            <button id="closeReadingPanel" class="close-reading-panel">×</button>
+                            <div class="reading-panel-controls">
+                                <button id="minimizeReadingPanel" class="minimize-reading-panel" title="最小化">−</button>
+                                <button id="closeReadingPanel" class="close-reading-panel" title="关闭">×</button>
+                            </div>
                         </div>
                         <div class="reading-panel-body">
                             <div id="readingText" class="reading-text"></div>
@@ -106,6 +109,24 @@
                                 <div class="reading-progress-bar">
                                     <div id="readingProgressFill" class="reading-progress-fill"></div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 朗读浮标 -->
+                    <div id="readingFloatingWidget" class="reading-floating-widget" style="display: none;">
+                        <div class="floating-widget-content">
+                            <div class="floating-widget-icon">🎧</div>
+                            <div class="floating-widget-text">
+                                <div class="floating-widget-title">正在朗读</div>
+                                <div class="floating-widget-progress">
+                                    <span id="floatingCurrentSegment">段落 1</span>
+                                    <span id="floatingTotalSegments">共 1 段</span>
+                                </div>
+                            </div>
+                            <div class="floating-widget-controls">
+                                <button id="expandReadingPanel" class="expand-reading-panel" title="展开">↗</button>
+                                <button id="closeFloatingWidget" class="close-floating-widget" title="关闭">×</button>
                             </div>
                         </div>
                     </div>
@@ -149,6 +170,6 @@
     </div>
 
     <script src="lib/build/pdf.mjs" type="module"></script>
-    <script src="js/main.js?v=61" type="module"></script>
+    <script src="js/main.js?v=62" type="module"></script>
 </body>
 </html>
