@@ -1876,7 +1876,7 @@ class PDFReader {
 
     updateReadButton() {
         if (this.isReading && this.isPaused) {
-            this.readAloudBtn.innerHTML = '▶️ Resume';
+            this.readAloudBtn.innerHTML = '▶️ Play';
             this.readAloudBtn.title = '继续朗读';
             this.readAloudBtn.classList.add('reading');
             this.readAloudBtn.classList.add('paused');
