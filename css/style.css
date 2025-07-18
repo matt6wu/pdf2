@@ -662,27 +662,40 @@ body {
 }
 
 #readAloudBtn.reading {
-    background: #dc3545;
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
     border-color: #dc3545;
     animation: pulse 1.5s ease-in-out infinite;
 }
 
 #readAloudBtn.reading:hover {
-    background: #c82333;
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
     border-color: #bd2130;
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
 }
 
 #readAloudBtn.paused {
-    background: #ffc107;
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
     border-color: #ffc107;
     animation: none;
 }
 
 #readAloudBtn.paused:hover {
-    background: #e0a800;
+    background: linear-gradient(135deg, #e0a800 0%, #d39e00 100%);
     border-color: #d39e00;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+}
+
+#readAloudBtn.reading.paused {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+    border-color: #ffc107 !important;
+    animation: none !important;
+}
+
+#readAloudBtn.reading.paused:hover {
+    background: linear-gradient(135deg, #e0a800 0%, #d39e00 100%) !important;
+    border-color: #d39e00 !important;
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
 }
@@ -1238,6 +1251,7 @@ body {
     
     #readAloudBtn, #stopReadingBtn {
         font-size: 1.1rem !important;
+        padding: 0.5rem 1rem !important;
     }
     
     .drop-zone {
@@ -1281,5 +1295,6 @@ body {
     
     #readAloudBtn, #stopReadingBtn {
         font-size: 1rem !important;
+        padding: 0.5rem 1rem !important;
     }
 }
