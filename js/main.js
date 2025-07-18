@@ -492,6 +492,9 @@ class PDFReader {
             
             this.generateThumbnails();
             this.updatePageInfo();
+            
+            // 自动检测语言并设置语言选择开关
+            await this.autoDetectAndSetLanguage();
             this.updateNavigationButtons();
             
             // 延迟保存PDF到本地存储，确保所有处理完成
@@ -1468,10 +1471,70 @@ class PDFReader {
         }
     }
 
+    // 自动检测PDF语言并设置语言选择开关
+    async autoDetectAndSetLanguage() {
+        if (!this.pdfDoc) return;
+        
+        try {
+            console.log('🔍 开始自动检测PDF语言...');
+            
+            // 检测前3页的文本内容
+            let allText = '';
+            const maxPages = Math.min(3, this.pageCount);
+            
+            for (let i = 1; i <= maxPages; i++) {
+                const page = await this.pdfDoc.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                allText += pageText + ' ';
+            }
+            
+            // 检测语言
+            const detectedLanguage = this.detectLanguage(allText);
+            console.log(`🌍 检测到的语言: ${detectedLanguage}`);
+            console.log(`📝 分析的文本样本: "${allText.substring(0, 100)}..."`);
+            
+            // 设置语言选择开关
+            this.languageToggleBtn.dataset.language = detectedLanguage;
+            this.languageToggleBtn.checked = detectedLanguage === 'en'; // 英文时checked为true
+            this.languageSwitchContainer.dataset.active = detectedLanguage;
+            
+            console.log(`✅ 语言选择开关已自动设置为: ${detectedLanguage === 'zh' ? '中文' : 'English'}`);
+            
+        } catch (error) {
+            console.error('❌ 自动语言检测失败:', error);
+            // 失败时默认设置为英文
+            this.languageToggleBtn.dataset.language = 'en';
+            this.languageToggleBtn.checked = true; // 英文时checked为true
+            this.languageSwitchContainer.dataset.active = 'en';
+        }
+    }
+
+    // 自动检测文本语言
+    detectLanguage(text) {
+        // 检测中文字符（包括中文汉字、标点符号）
+        const chineseRegex = /[\u4e00-\u9fff\u3400-\u4dbf\uff00-\uffef\u3000-\u303f]/g;
+        const chineseMatches = text.match(chineseRegex);
+        const chineseCount = chineseMatches ? chineseMatches.length : 0;
+        
+        // 检测英文字符
+        const englishRegex = /[a-zA-Z]/g;
+        const englishMatches = text.match(englishRegex);
+        const englishCount = englishMatches ? englishMatches.length : 0;
+        
+        console.log(`🔍 语言检测 - 中文字符: ${chineseCount}, 英文字符: ${englishCount}`);
+        
+        // 只要有中文字符就判定为中文
+        return chineseCount > 0 ? 'zh' : 'en';
+    }
+
     // 智能分段函数
     splitTextIntelligently(text, maxLength = null) {
-        // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
+        // 使用用户选择的语言（可能是手动选择或自动检测后的结果）
         const selectedLanguage = this.languageToggleBtn.dataset.language;
+        console.log(`🌍 使用当前选择的语言: ${selectedLanguage}`);
+        
+        // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
         if (maxLength === null) {
             maxLength = selectedLanguage === 'zh' ? 80 : 300; // 中文调整为80字符，英文保持300字符
         }
@@ -1647,9 +1710,9 @@ class PDFReader {
         let nextAudioPromise = null;
         let isPreloadingNext = false; // 防止重复预加载
         
-        // 获取当前语言设置
+        // 使用用户选择的语言（可能是手动选择或自动检测后的结果）
         const selectedLanguage = this.languageToggleBtn.dataset.language;
-        console.log(`🌍 当前语言: ${selectedLanguage}, 将使用对应的预加载策略`);
+        console.log(`🌍 当前选择的语言: ${selectedLanguage}, 将使用对应的预加载策略`);
         
         for (let i = 0; i < segments.length; i++) {
             if (!this.isReading) break; // 检查是否被用户停止
@@ -1777,8 +1840,9 @@ class PDFReader {
             throw new Error('朗读已停止');
         }
         
-        // 获取选择的语言
+        // 使用用户选择的语言（可能是手动选择或自动检测后的结果）
         const selectedLanguage = this.languageToggleBtn.dataset.language;
+        console.log(`🌍 TTS使用当前选择的语言: ${selectedLanguage}`);
         
         // 生成唯一的请求ID用于调试
         const requestId = Math.random().toString(36).substring(2, 8);
