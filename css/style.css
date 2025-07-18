@@ -1237,7 +1237,7 @@ body {
     }
     
     #readAloudBtn, #stopReadingBtn {
-        font-size: 1rem !important;
+        font-size: 1.1rem !important;
     }
     
     .drop-zone {
@@ -1277,5 +1277,9 @@ body {
     
     .thumbnail-item {
         min-width: 120px;
+    }
+    
+    #readAloudBtn, #stopReadingBtn {
+        font-size: 1rem !important;
     }
 }
