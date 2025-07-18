@@ -816,11 +816,14 @@ class PDFReader {
     }
 
     pauseReading() {
-        if (this.currentAudio && !this.currentAudio.paused) {
+        if (this.isReading && !this.isPaused) {
             console.log('⏸️ 执行暂停操作');
             
             // 暂停当前音频
-            this.currentAudio.pause();
+            if (this.currentAudio && !this.currentAudio.paused) {
+                this.currentAudio.pause();
+                console.log('⏸️ 暂停当前音频');
+            }
             
             // 暂停所有正在播放的音频
             this.allAudios.forEach((audio, index) => {
@@ -844,23 +847,26 @@ class PDFReader {
     }
 
     resumeReading() {
-        if (this.currentAudio && this.currentAudio.paused && this.isPaused) {
+        if (this.isReading && this.isPaused) {
             console.log('▶️ 执行恢复操作');
             
             // 恢复当前音频播放
-            this.currentAudio.play().then(() => {
-                console.log('▶️ 当前音频恢复播放');
-            }).catch(error => {
-                console.error('▶️ 恢复播放失败:', error);
-            });
+            if (this.currentAudio && this.currentAudio.paused) {
+                this.currentAudio.play().then(() => {
+                    console.log('▶️ 当前音频恢复播放');
+                }).catch(error => {
+                    console.error('▶️ 恢复播放失败:', error);
+                });
+            }
             
             // 恢复状态
             this.isPaused = false;
             this.updateReadButton();
             
             console.log('▶️ 朗读已恢复，继续播放当前段落');
-        } else if (!this.currentAudio || !this.isPaused) {
-            console.log('⚠️ 无法恢复：没有处于暂停状态的音频');
+        } else {
+            console.log('⚠️ 无法恢复：当前状态不允许恢复操作');
+            console.log(`⚠️ 调试信息 - isReading: ${this.isReading}, isPaused: ${this.isPaused}`);
         }
     }
 
@@ -869,9 +875,10 @@ class PDFReader {
         // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
         const selectedLanguage = this.languageSelect.value;
         if (maxLength === null) {
-            maxLength = selectedLanguage === 'zh' ? 60 : 120; // 中文60字符，英文120字符
+            maxLength = selectedLanguage === 'zh' ? 60 : 300; // 中文保持60字符，英文增加到300字符
         }
-        console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}`);
+        const minLength = selectedLanguage === 'zh' ? 20 : 100; // 中文保持20字符，英文最小100字符
+        console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}, 最小长度: ${minLength}`);
         const segments = [];
         
         // 如果文本长度小于最大长度，直接返回整个文本
@@ -945,12 +952,38 @@ class PDFReader {
             segments.push(text.trim());
         }
         
-        console.log(`📊 文本分段结果: ${segments.length} 段`);
-        segments.forEach((segment, index) => {
+        // 🔧 优化段落长度：合并太短的段落，特别是第一段
+        const optimizedSegments = [];
+        
+        for (let i = 0; i < segments.length; i++) {
+            const currentSeg = segments[i];
+            
+            // 如果当前段落太短，尝试与下一段合并
+            if (currentSeg.length < minLength && i + 1 < segments.length) {
+                const nextSeg = segments[i + 1];
+                const combinedSeg = currentSeg + ' ' + nextSeg;
+                
+                // 如果合并后不超过最大长度，就合并
+                if (combinedSeg.length <= maxLength) {
+                    optimizedSegments.push(combinedSeg);
+                    i++; // 跳过下一段，因为已经合并了
+                    console.log(`🔧 段落优化: 合并短段落 "${currentSeg.substring(0, 20)}..." + "${nextSeg.substring(0, 20)}..."`);
+                } else {
+                    // 合并后会超长，保持原样
+                    optimizedSegments.push(currentSeg);
+                }
+            } else {
+                // 段落长度合理，保持原样
+                optimizedSegments.push(currentSeg);
+            }
+        }
+        
+        console.log(`📊 文本分段结果: ${optimizedSegments.length} 段（优化后）`);
+        optimizedSegments.forEach((segment, index) => {
             console.log(`段 ${index + 1}: "${segment.substring(0, 80)}${segment.length > 80 ? '...' : ''}" (${segment.length} 字符)`);
         });
         
-        return segments;
+        return optimizedSegments;
     }
     
 
@@ -1014,6 +1047,7 @@ class PDFReader {
 
     async playSegments(segments) {
         let nextAudioPromise = null;
+        let isPreloadingNext = false; // 防止重复预加载
         
         for (let i = 0; i < segments.length; i++) {
             if (!this.isReading) break; // 检查是否被用户停止
@@ -1033,32 +1067,30 @@ class PDFReader {
             // 如果有预加载的音频，使用它；否则现场加载
             let audioPromise;
             if (nextAudioPromise) {
+                console.log(`⚡ 使用预加载的第 ${i+1} 段音频`);
                 audioPromise = nextAudioPromise;
                 nextAudioPromise = null;
+                isPreloadingNext = false;
             } else {
+                console.log(`📡 现场加载第 ${i+1} 段音频`);
                 audioPromise = this.loadSegmentAudio(segments[i]);
             }
             
-            // 开始预加载下一段（如果存在且未暂停）
-            // 优化：第一段播放后再开始预加载，避免首次双重加载
-            if (i + 1 < segments.length && this.isReading && !this.isPaused) {
-                // 延迟预加载，让第一段先开始播放
-                if (i === 0) {
-                    // 第一段播放开始后再预加载第二段
-                    const timeoutId = setTimeout(() => {
-                        if (this.isReading && !this.isPaused) {
-                            nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
-                            console.log(`⚡ 延迟预加载第 ${i+2} 段`);
-                        }
-                    }, 1000); // 1秒后开始预加载
-                    this.preloadTimeouts.push(timeoutId);
-                } else {
-                    // 非第一段的预加载也要检查状态
-                    if (this.isReading && !this.isPaused) {
+            // 只在非第一段时才预加载下一段（第一段不预加载，让它专心播放）
+            if (i > 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext) {
+                isPreloadingNext = true;
+                
+                // 非第一段的预加载延迟0.5秒
+                const timeoutId = setTimeout(() => {
+                    if (this.isReading && !this.isPaused && isPreloadingNext) {
                         nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                         console.log(`⚡ 开始预加载第 ${i+2} 段`);
                     }
-                }
+                }, 500); // 延迟0.5秒
+                
+                this.preloadTimeouts.push(timeoutId);
+            } else if (i === 0) {
+                console.log(`🎯 第一段不预加载，专心播放当前段落`);
             }
             
             try {
@@ -1066,11 +1098,31 @@ class PDFReader {
                 const audioData = await audioPromise;
                 await this.playAudioData(audioData);
                 
+                // 播放完成后再次检查状态，防止在播放过程中被暂停或停止
+                if (!this.isReading) {
+                    console.log('⚠️ 播放完成后检测到停止状态，退出播放循环');
+                    break;
+                }
+                
                 console.log(`✅ 第 ${i+1}/${segments.length} 段播放完成`);
+                
+                // 在第一段播放完成后才开始预加载第二段
+                if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext) {
+                    isPreloadingNext = true;
+                    console.log(`🎯 第一段播放完成，现在开始预加载第二段`);
+                    nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
+                }
                 
                 // 段间短暂停顿（除了最后一段，且未暂停时）
                 if (i < segments.length - 1 && this.isReading && !this.isPaused) {
                     await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                
+                // 在第一段播放完成后才开始预加载第二段
+                if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext) {
+                    isPreloadingNext = true;
+                    console.log(`🎯 第一段播放完成，现在开始预加载第二段`);
+                    nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                 }
             } catch (error) {
                 console.error(`❌ 第 ${i+1} 段播放失败:`, error);
@@ -1103,7 +1155,10 @@ class PDFReader {
     async loadSegmentAudio(text, retryCount = 3) {
         // 获取选择的语言
         const selectedLanguage = this.languageSelect.value;
-        console.log(`🔍 调试：选择的语言是 "${selectedLanguage}"`);
+        
+        // 生成唯一的请求ID用于调试
+        const requestId = Math.random().toString(36).substring(2, 8);
+        console.log(`🔍 [${requestId}] 开始加载音频 - 语言: ${selectedLanguage}, 文本: "${text.substring(0, 30)}..."`);
         
         let ttsUrl;
         
@@ -1117,7 +1172,7 @@ class PDFReader {
         
         for (let attempt = 1; attempt <= retryCount; attempt++) {
             try {
-                console.log(`📡 正在生成${selectedLanguage === 'zh' ? '中文' : '英文'}语音 (尝试 ${attempt}/${retryCount})...`);
+                console.log(`📡 [${requestId}] 正在生成${selectedLanguage === 'zh' ? '中文' : '英文'}语音 (尝试 ${attempt}/${retryCount})...`);
                 
                 let response;
                 
@@ -1146,12 +1201,12 @@ class PDFReader {
                 
                 // 获取音频数据
                 const audioBlob = await response.blob();
-                console.log(`🎵 ${selectedLanguage === 'zh' ? '中文' : '英文'}音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+                console.log(`🎵 [${requestId}] ${selectedLanguage === 'zh' ? '中文' : '英文'}音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
                 
                 return audioBlob;
                 
             } catch (error) {
-                console.warn(`⚠️ 第 ${attempt} 次尝试失败:`, error.message);
+                console.warn(`⚠️ [${requestId}] 第 ${attempt} 次尝试失败:`, error.message);
                 
                 if (attempt === retryCount) {
                     throw error;
@@ -1171,7 +1226,13 @@ class PDFReader {
             audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
                 this.removeAudioFromList(audio);
-                resolve();
+                // 播放结束时检查状态
+                if (this.isReading) {
+                    resolve();
+                } else {
+                    console.log('⚠️ 音频播放结束时检测到停止状态');
+                    reject(new Error('朗读已停止'));
+                }
             };
             
             audio.onerror = () => {
@@ -1183,7 +1244,15 @@ class PDFReader {
             // 存储当前音频引用用于停止控制
             this.currentAudio = audio;
             this.allAudios.push(audio); // 添加到所有音频列表
-            audio.play().catch(reject);
+            
+            // 播放前检查状态
+            if (this.isReading) {
+                audio.play().catch(reject);
+            } else {
+                URL.revokeObjectURL(audioUrl);
+                this.removeAudioFromList(audio);
+                reject(new Error('朗读已停止'));
+            }
         });
     }
 
@@ -1248,6 +1317,7 @@ class PDFReader {
                 audio.pause();
                 audio.currentTime = 0;
                 audio.src = ''; // 清空音频源
+                audio.load(); // 重载音频元素以确保彻底清理
             }
         });
         
@@ -1269,6 +1339,7 @@ class PDFReader {
         this.isPaused = false;
         this.currentSegmentIndex = 0;
         this.totalSegmentCount = 0;
+        this.readingPageNum = 1; // 重置朗读页码
         
         // 更新UI
         this.updateReadButton();
@@ -1276,7 +1347,7 @@ class PDFReader {
         this.updateGoToReadingPageButton();
         this.hideReadingContentPanel();
         
-        console.log('🔇 朗读功能已彻底停止，所有音频和定时器已清理');
+        console.log('🔇 朗读功能已彻底停止，所有音频和定时器已清理，已恢复到平静状态');
     }
 
     async autoGoToNextPageAndRead() {
@@ -1495,6 +1566,7 @@ class PDFReader {
         if (this.readingContentPanel) {
             this.readingContentPanel.style.display = 'none';
             this.readingText.textContent = '';
+            this.readingText.innerHTML = ''; // 也清理HTML内容
             this.currentSegmentIndex = 0;
             this.totalSegmentCount = 0;
             this.updateReadingProgress();
@@ -1502,7 +1574,7 @@ class PDFReader {
             this.readingContentPanel.style.transform = 'translate(-50%, -50%)';
             this.readingContentPanel.style.left = '50%';
             this.readingContentPanel.style.top = '50%';
-            console.log('📋 朗读内容框已隐藏');
+            console.log('📋 朗读内容框已隐藏并清理');
         }
     }
 
