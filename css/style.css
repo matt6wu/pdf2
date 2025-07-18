@@ -534,6 +534,23 @@ body {
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
+.zlib-link {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+    border-color: #ff6b6b;
+    font-size: 1.2rem;
+    text-decoration: none;
+    display: inline-block;
+    color: white !important;
+}
+
+.zlib-link:hover {
+    background: linear-gradient(135deg, #ff5252 0%, #e55100 100%);
+    border-color: #ff5252;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+    text-decoration: none;
+    color: white !important;
+}
+
 #zoomLevel {
     color: #333;
     font-weight: 500;
