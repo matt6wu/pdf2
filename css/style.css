@@ -670,6 +670,8 @@ body {
 #readAloudBtn.reading:hover {
     background: #c82333;
     border-color: #bd2130;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
 }
 
 #readAloudBtn.paused {
@@ -681,6 +683,8 @@ body {
 #readAloudBtn.paused:hover {
     background: #e0a800;
     border-color: #d39e00;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
 }
 
 #stopReadingBtn {
