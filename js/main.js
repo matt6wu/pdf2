@@ -1876,17 +1876,17 @@ class PDFReader {
 
     updateReadButton() {
         if (this.isReading && this.isPaused) {
-            this.readAloudBtn.innerHTML = '▶️';
+            this.readAloudBtn.innerHTML = '▶️ Resume';
             this.readAloudBtn.title = '继续朗读';
             this.readAloudBtn.classList.add('reading');
             this.readAloudBtn.classList.add('paused');
         } else if (this.isReading) {
-            this.readAloudBtn.innerHTML = '⏸️';
+            this.readAloudBtn.innerHTML = '⏸️ Pause';
             this.readAloudBtn.title = '暂停朗读';
             this.readAloudBtn.classList.add('reading');
             this.readAloudBtn.classList.remove('paused');
         } else {
-            this.readAloudBtn.innerHTML = '🔊';
+            this.readAloudBtn.innerHTML = '🔊 Read';
             this.readAloudBtn.title = '朗读当前页';
             this.readAloudBtn.classList.remove('reading', 'paused');
         }
