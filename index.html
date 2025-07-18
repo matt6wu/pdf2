@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MPDF - Modern PDF Reader</title>
-    <link rel="stylesheet" href="css/style.css?v=52">
+    <link rel="stylesheet" href="css/style.css?v=55">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf_viewer.min.css">
 </head>
 <body>
@@ -131,6 +131,36 @@
                         </div>
                     </div>
                     
+                    <!-- 时间统计浮标 -->
+                    <div id="timeTrackingWidget" class="time-tracking-widget">
+                        <div class="floating-widget-content">
+                            <div class="floating-widget-icon">⏰</div>
+                            <div class="floating-widget-text">
+                                <div class="floating-widget-title" id="localTimeDisplay">00:00:00</div>
+                                <div class="floating-widget-progress">
+                                    <span>使用时间:</span>
+                                    <span id="usageTimeDisplay">00:00:00</span>
+                                </div>
+                            </div>
+                            <div class="floating-widget-controls">
+                                <button id="minimizeTimeWidget" class="minimize-time-widget" title="最小化">−</button>
+                                <button id="resetUsageTime" class="reset-usage-time" title="重置">🔄</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 时间统计最小化浮标 -->
+                    <div id="timeTrackingMiniWidget" class="time-tracking-mini-widget" style="display: none;">
+                        <div class="mini-widget-content">
+                            <div class="mini-widget-icon">⏰</div>
+                            <div class="mini-widget-text">
+                                <div class="mini-widget-time" id="miniLocalTime">00:00</div>
+                                <div class="mini-widget-usage" id="miniUsageTime">00:00</div>
+                            </div>
+                            <button id="expandTimeWidget" class="expand-time-widget" title="展开">↗</button>
+                        </div>
+                    </div>
+                    
                     <div class="pdf-content-container" id="pdfContainer">
                         <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
                     </div>
@@ -170,6 +200,6 @@
     </div>
 
     <script src="lib/build/pdf.mjs" type="module"></script>
-    <script src="js/main.js?v=62" type="module"></script>
+    <script src="js/main.js?v=66" type="module"></script>
 </body>
 </html>

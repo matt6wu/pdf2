@@ -17,6 +17,13 @@ class PDFReader {
         this.isReading = false; // 朗读状态
         this.isPaused = false; // 暂停状态
         this.currentAudio = null; // 当前播放的音频对象
+        this.isReadingPanelMinimized = false; // 跟踪朗读面板是否被最小化
+        
+        // 时间统计相关状态
+        this.appStartTime = Date.now(); // 应用启动时间
+        this.totalUsageTime = 0; // 累积使用时间（毫秒）
+        this.isTimeWidgetMinimized = false; // 时间浮标是否最小化
+        this.timeUpdateInterval = null; // 时间更新定时器
         this.allAudios = []; // 所有音频实例列表
         this.preloadTimeouts = []; // 预加载定时器列表
         this.hoverTimeout = null; // 悬停防抖定时器
@@ -43,6 +50,7 @@ class PDFReader {
         this.setupEventListeners();
         this.setupWindowResize();
         this.initializeLanguageSwitch();
+        this.initializeTimeTracking();
     }
 
     initializeElements() {
@@ -87,6 +95,17 @@ class PDFReader {
         this.closeFloatingWidget = document.getElementById('closeFloatingWidget');
         this.floatingCurrentSegment = document.getElementById('floatingCurrentSegment');
         this.floatingTotalSegments = document.getElementById('floatingTotalSegments');
+        
+        // 时间统计相关元素
+        this.timeTrackingWidget = document.getElementById('timeTrackingWidget');
+        this.timeTrackingMiniWidget = document.getElementById('timeTrackingMiniWidget');
+        this.localTimeDisplay = document.getElementById('localTimeDisplay');
+        this.usageTimeDisplay = document.getElementById('usageTimeDisplay');
+        this.miniLocalTime = document.getElementById('miniLocalTime');
+        this.miniUsageTime = document.getElementById('miniUsageTime');
+        this.minimizeTimeWidget = document.getElementById('minimizeTimeWidget');
+        this.resetUsageTime = document.getElementById('resetUsageTime');
+        this.expandTimeWidget = document.getElementById('expandTimeWidget');
         
         // 调试：检查按钮是否正确获取
         console.log('🔍 按钮初始化检查:');
@@ -161,10 +180,38 @@ class PDFReader {
         this.minimizeReadingPanel.addEventListener('click', () => this.minimizeReadingContentPanel());
         
         // 浮标展开按钮
-        this.expandReadingPanel.addEventListener('click', () => this.expandReadingContentPanel());
+        this.expandReadingPanel.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止事件冒泡
+            this.expandReadingContentPanel();
+        });
         
         // 浮标关闭按钮
-        this.closeFloatingWidget.addEventListener('click', () => this.hideFloatingWidget());
+        this.closeFloatingWidget.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止事件冒泡
+            this.hideFloatingWidget();
+        });
+        
+        // 整个浮标点击展开
+        this.readingFloatingWidget.addEventListener('click', () => this.expandReadingContentPanel());
+        
+        // 时间统计浮标事件
+        this.minimizeTimeWidget.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.minimizeTimeTrackingWidget();
+        });
+        
+        this.resetUsageTime.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.resetUsageTimeCounter();
+        });
+        
+        this.expandTimeWidget.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.expandTimeTrackingWidget();
+        });
+        
+        // 时间最小化浮标整体点击
+        this.timeTrackingMiniWidget.addEventListener('click', () => this.expandTimeTrackingWidget());
         
         // 朗读内容框拖拽功能
         this.setupReadingPanelDrag();
@@ -2040,13 +2087,14 @@ class PDFReader {
         console.log('🔍 showReadingContentPanel 被调用');
         console.log('🔍 readingContentPanel 元素:', this.readingContentPanel);
         console.log('🔍 readingText 元素:', this.readingText);
+        console.log('🔍 当前最小化状态:', this.isReadingPanelMinimized);
         
         if (!this.readingContentPanel) {
             console.error('❌ readingContentPanel 元素未找到');
             return;
         }
         
-        this.readingContentPanel.style.display = 'block';
+        // 更新文本内容和进度数据
         this.readingText.textContent = fullText;
         this.currentSegmentIndex = 0;
         this.totalSegmentCount = segments.length;
@@ -2054,14 +2102,28 @@ class PDFReader {
         // 更新进度信息
         this.updateReadingProgress();
         
-        console.log('📋 朗读内容框已显示, 文本长度:', fullText.length);
+        // 根据最小化状态决定显示方式
+        if (this.isReadingPanelMinimized) {
+            // 如果之前被最小化，显示浮标而不是完整面板
+            this.showFloatingWidget();
+            console.log('📋 朗读内容已更新，保持浮标显示');
+        } else {
+            // 正常显示完整面板
+            this.readingContentPanel.style.display = 'block';
+            console.log('📋 朗读内容框已显示, 文本长度:', fullText.length);
+        }
     }
 
     // 更新朗读内容框当前段落
     updateReadingContentPanel(segmentIndex, currentSegmentText) {
-        if (!this.readingContentPanel || this.readingContentPanel.style.display === 'none') return;
-        
+        // 始终更新段落索引，即使面板隐藏（为了浮标能正确显示）
         this.currentSegmentIndex = segmentIndex;
+        
+        // 如果面板隐藏，只更新进度信息，不更新面板内容
+        if (!this.readingContentPanel || this.readingContentPanel.style.display === 'none') {
+            this.updateReadingProgress();
+            return;
+        }
         
         // 高亮当前段落
         const allText = this.readingText.textContent;
@@ -2135,6 +2197,8 @@ class PDFReader {
             this.readingContentPanel.style.transform = 'translate(-50%, -50%)';
             this.readingContentPanel.style.left = '50%';
             this.readingContentPanel.style.top = '50%';
+            // 重置最小化状态
+            this.isReadingPanelMinimized = false;
             console.log('📋 朗读内容框已隐藏并清理');
         }
         // 同时隐藏浮标
@@ -2148,6 +2212,8 @@ class PDFReader {
             this.readingContentPanel.style.display = 'none';
             // 显示浮标
             this.showFloatingWidget();
+            // 设置最小化状态
+            this.isReadingPanelMinimized = true;
             console.log('📋 朗读内容框已最小化为浮标');
         }
     }
@@ -2159,6 +2225,8 @@ class PDFReader {
             this.readingFloatingWidget.style.display = 'none';
             // 显示朗读面板
             this.readingContentPanel.style.display = 'block';
+            // 取消最小化状态
+            this.isReadingPanelMinimized = false;
             console.log('📋 朗读内容框已从浮标展开');
         }
     }
@@ -2186,6 +2254,7 @@ class PDFReader {
         if (this.floatingCurrentSegment && this.floatingTotalSegments) {
             this.floatingCurrentSegment.textContent = this.currentSegment.textContent;
             this.floatingTotalSegments.textContent = this.totalSegments.textContent;
+            console.log('📋 浮标进度已同步:', this.currentSegment.textContent, this.totalSegments.textContent);
         }
     }
 
@@ -2328,6 +2397,106 @@ class PDFReader {
         });
     }
 
+    // 初始化时间统计功能
+    initializeTimeTracking() {
+        // 从localStorage读取累积使用时间
+        this.totalUsageTime = parseInt(localStorage.getItem('pdfReaderUsageTime') || '0');
+        
+        // 启动时间更新定时器
+        this.startTimeTracking();
+        
+        // 页面关闭时保存使用时间
+        window.addEventListener('beforeunload', () => {
+            this.saveUsageTime();
+        });
+        
+        // 页面隐藏时保存使用时间
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.saveUsageTime();
+            } else {
+                // 页面重新可见时重置开始时间
+                this.appStartTime = Date.now();
+            }
+        });
+        
+        console.log('⏰ 时间统计功能已初始化');
+    }
+
+    // 开始时间统计
+    startTimeTracking() {
+        this.timeUpdateInterval = setInterval(() => {
+            this.updateTimeDisplay();
+        }, 1000);
+    }
+
+    // 更新时间显示
+    updateTimeDisplay() {
+        const now = new Date();
+        const currentTime = now.toLocaleTimeString('zh-CN', { hour12: false });
+        
+        // 计算当前会话使用时间
+        const sessionTime = Date.now() - this.appStartTime;
+        const totalTime = this.totalUsageTime + sessionTime;
+        
+        // 格式化使用时间
+        const usageTimeStr = this.formatTime(totalTime);
+        
+        // 更新完整浮标
+        this.localTimeDisplay.textContent = currentTime;
+        this.usageTimeDisplay.textContent = usageTimeStr;
+        
+        // 更新最小化浮标
+        this.miniLocalTime.textContent = currentTime.substring(0, 5); // 只显示时:分
+        this.miniUsageTime.textContent = usageTimeStr;
+    }
+
+    // 格式化时间（毫秒转为时:分:秒）
+    formatTime(milliseconds) {
+        const totalSeconds = Math.floor(milliseconds / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        
+        if (hours > 0) {
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        } else {
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    }
+
+    // 保存使用时间到localStorage
+    saveUsageTime() {
+        const sessionTime = Date.now() - this.appStartTime;
+        this.totalUsageTime += sessionTime;
+        localStorage.setItem('pdfReaderUsageTime', this.totalUsageTime.toString());
+        this.appStartTime = Date.now(); // 重置开始时间
+    }
+
+    // 最小化时间统计浮标
+    minimizeTimeTrackingWidget() {
+        this.timeTrackingWidget.style.display = 'none';
+        this.timeTrackingMiniWidget.style.display = 'block';
+        this.isTimeWidgetMinimized = true;
+        console.log('⏰ 时间统计浮标已最小化');
+    }
+
+    // 展开时间统计浮标
+    expandTimeTrackingWidget() {
+        this.timeTrackingMiniWidget.style.display = 'none';
+        this.timeTrackingWidget.style.display = 'block';
+        this.isTimeWidgetMinimized = false;
+        console.log('⏰ 时间统计浮标已展开');
+    }
+
+    // 重置使用时间计数器
+    resetUsageTimeCounter() {
+        this.totalUsageTime = 0;
+        this.appStartTime = Date.now();
+        localStorage.setItem('pdfReaderUsageTime', '0');
+        this.updateTimeDisplay();
+        console.log('⏰ 使用时间计数器已重置');
+    }
 }
 
 // 初始化应用

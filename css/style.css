@@ -1404,6 +1404,11 @@ body {
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
 }
 
+.reading-floating-widget:active {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
 .floating-widget-content {
     display: flex;
     align-items: center;
@@ -1476,4 +1481,115 @@ body {
     background: rgba(255, 255, 255, 0.2);
     transform: scale(1.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 时间统计浮标样式 */
+.time-tracking-widget {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    width: 280px;
+    height: 70px;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 35px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    z-index: 998;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    animation: slideInFromRight 0.3s ease-out;
+}
+
+.time-tracking-widget:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.time-tracking-widget:active {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.minimize-time-widget,
+.reset-usage-time,
+.expand-time-widget {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(5px);
+}
+
+.minimize-time-widget:hover,
+.reset-usage-time:hover,
+.expand-time-widget:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 时间统计最小化浮标样式 */
+.time-tracking-mini-widget {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    width: 120px;
+    height: 50px;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 25px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    z-index: 998;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    animation: slideInFromRight 0.3s ease-out;
+}
+
+.time-tracking-mini-widget:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.mini-widget-content {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    height: 100%;
+    gap: 8px;
+}
+
+.mini-widget-icon {
+    font-size: 1.2rem;
+    color: white;
+    min-width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mini-widget-text {
+    flex: 1;
+    color: white;
+    min-width: 0;
+    font-size: 0.7rem;
+    line-height: 1.2;
+}
+
+.mini-widget-time {
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.mini-widget-usage {
+    opacity: 0.9;
+    font-size: 0.65rem;
 }
