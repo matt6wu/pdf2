@@ -1473,9 +1473,9 @@ class PDFReader {
         // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
         const selectedLanguage = this.languageToggleBtn.dataset.language;
         if (maxLength === null) {
-            maxLength = selectedLanguage === 'zh' ? 100 : 300; // 中文调整为100字符，英文保持300字符
+            maxLength = selectedLanguage === 'zh' ? 80 : 300; // 中文调整为80字符，英文保持300字符
         }
-        const minLength = selectedLanguage === 'zh' ? 30 : 100; // 中文调整为30字符，英文最小100字符
+        const minLength = selectedLanguage === 'zh' ? 50 : 100; // 中文调整为50字符，英文最小100字符
         console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}, 最小长度: ${minLength}`);
         const segments = [];
         
