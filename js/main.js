@@ -612,6 +612,7 @@ class PDFReader {
             this.scale = Math.max(0.3, Math.min(3.0, newScale));
             this.renderPage(this.pageNum);
             this.updateZoomLevel();
+            this.updateSliderPosition();
             
             console.log(`📐 适应屏幕宽度: ${Math.round(this.scale * 100)}%`);
         });
