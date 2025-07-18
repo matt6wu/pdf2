@@ -781,11 +781,11 @@ class PDFReader {
     }
 
     initializeLanguageSwitch() {
-        // 设置默认语言为中文
-        this.languageToggleBtn.checked = false;
-        this.languageToggleBtn.dataset.language = 'zh';
-        this.languageSwitchContainer.dataset.active = 'zh';
-        console.log('🌍 语言开关初始化: 默认中文');
+        // 设置默认语言为英文
+        this.languageToggleBtn.checked = true;
+        this.languageToggleBtn.dataset.language = 'en';
+        this.languageSwitchContainer.dataset.active = 'en';
+        console.log('🌍 语言开关初始化: 默认英文');
     }
 
     // 阅读记忆功能相关方法
