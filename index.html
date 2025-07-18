@@ -3,14 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF电子阅读器</title>
-    <link rel="stylesheet" href="css/style.css?v=36">
+    <title>MPDF - Modern PDF Reader</title>
+    <link rel="stylesheet" href="css/style.css?v=37">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf_viewer.min.css">
 </head>
 <body>
     <div class="app-container">
         <header class="header">
-            <h1>PDF 电子阅读器</h1>
+            <div class="logo-container">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 40 40" width="40" height="40">
+                        <defs>
+                            <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="8" y="6" width="24" height="28" rx="2" fill="url(#logoGradient)" stroke="white" stroke-width="1"/>
+                        <rect x="12" y="12" width="16" height="1.5" rx="0.75" fill="white" opacity="0.9"/>
+                        <rect x="12" y="16" width="16" height="1.5" rx="0.75" fill="white" opacity="0.7"/>
+                        <rect x="12" y="20" width="12" height="1.5" rx="0.75" fill="white" opacity="0.5"/>
+                        <rect x="12" y="24" width="14" height="1.5" rx="0.75" fill="white" opacity="0.3"/>
+                    </svg>
+                    <div class="logo-text">
+                        <span class="logo-title">MPDF</span>
+                        <span class="logo-subtitle">Modern PDF Reader</span>
+                    </div>
+                </div>
+            </div>
             <div class="controls">
                 <button id="homeBtn" class="control-btn">🏠 Home</button>
                 <button id="uploadBtn" class="control-btn">📁 Upload</button>
@@ -121,6 +141,6 @@
     </div>
 
     <script src="lib/build/pdf.mjs" type="module"></script>
-    <script src="js/main.js?v=49" type="module"></script>
+    <script src="js/main.js?v=50" type="module"></script>
 </body>
 </html>
