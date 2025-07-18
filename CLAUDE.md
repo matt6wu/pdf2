@@ -1,4 +1,43 @@
-# PDF电子阅读器
+# PDF电子阅读器 - MPDF
+
+## 🎯 项目简介
+
+**MPDF是一个基于Web的现代PDF阅读器**，集成了智能TTS朗读功能，支持中英文语音合成，提供流畅的阅读和听书体验。
+
+- **网站地址**: https://pdf.mattwu.cc
+- **端口**: 6788
+- **进程管理**: PM2管理
+- **主要功能**: PDF阅读 + 智能TTS朗读
+
+## 🔧 服务管理
+
+### PM2进程状态
+```bash
+pm2 status              # 查看所有服务状态
+pm2 logs pdf-reader     # 查看PDF阅读器日志
+pm2 logs chinese-tts    # 查看中文TTS日志
+pm2 logs tts-server     # 查看英文TTS日志
+pm2 restart pdf-reader  # 重启PDF阅读器
+pm2 restart chinese-tts # 重启中文TTS
+pm2 restart tts-server  # 重启英文TTS
+```
+
+### TTS服务配置
+- **中文TTS**: https://ttszh.mattwu.cc/tts (PM2进程: chinese-tts)
+- **英文TTS**: https://tts.mattwu.cc/api/tts (PM2进程: tts-server)
+- **自动语言检测**: 检测PDF内容自动选择TTS服务
+- **智能分段**: 中文50-80字符，英文100-300字符
+
+### 核心特性
+- **拖拽上传PDF**: 支持本地文件和云存储
+- **智能朗读**: 悬停触发、分段播放、预加载机制
+- **语言检测**: 自动检测中英文内容并切换TTS
+- **阅读记忆**: IndexedDB本地存储，记住阅读进度
+- **移动兼容**: 支持iPad/iPhone触摸操作
+
+---
+
+## 📖 详细功能介绍
 
 一个基于Web的现代PDF阅读器应用，使用Mozilla PDF.js构建，提供清晰的高DPI显示和流畅的用户体验。
 
@@ -134,15 +173,17 @@
 ```
 pdf-reader/
 ├── index.html          # 主页面结构
+├── favicon.ico         # 网站图标（ICO格式）
+├── favicon.svg         # 网站图标（SVG格式）
 ├── css/
-│   └── style.css       # 样式表（白色主题，响应式设计）
+│   └── style.css       # 样式表（白色主题，响应式设计，移动端优化）
 ├── js/
-│   └── main.js         # 核心JavaScript逻辑
+│   └── main.js         # 核心JavaScript逻辑（智能语言检测、TTS集成）
 ├── lib/                # PDF.js库文件
 │   └── build/
 │       ├── pdf.mjs
 │       └── pdf.worker.mjs
-└── CLAUDE.md          # 项目文档
+└── CLAUDE.md          # 项目文档（本文件）
 ```
 
 ## 使用说明
@@ -203,6 +244,21 @@ pm2 save               # 保存PM2配置
 - `Esc`: 切换侧边栏
 
 ## 最新更新
+
+### v2.6 - 智能语言检测与体验优化 (当前版本)
+- 🤖 **智能语言检测**: PDF加载时自动检测中英文内容，自动切换语言选择开关
+- 🎯 **Logo点击优化**: 点击MPDF Logo回到上传状态而非刷新，保持应用流畅性
+- 📱 **移动端兼容**: 完善iPad/iPhone触摸支持，添加触摸事件和CSS优化
+- 🔄 **会话管理**: 上传新书自动停止当前朗读，避免重叠播放
+- 🎨 **Favicon添加**: 基于logo设计的SVG和ICO网站图标
+- 🔧 **Preload语言检测**: 本地恢复PDF时也支持自动语言检测
+- ✨ **朗读高亮修复**: 修复第一句朗读时的高亮显示问题
+- 📊 **JavaScript版本**: 更新到v80，CSS版本v58
+
+### v2.5 - 分段策略优化
+- 🔧 **分段长度调整**: 中文分段优化为50-80字符，提升朗读体验
+- ⚡ **预加载恢复**: 修复第一段播放时第二段预加载功能
+- 🎵 **流畅播放**: 统一中英文预加载策略，消除卡顿现象
 
 ### v2.4 - 多语言TTS支持
 - 🌍 添加语言选择下拉框：支持中文/英文TTS切换
