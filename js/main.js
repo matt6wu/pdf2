@@ -488,7 +488,12 @@ class PDFReader {
             }
             
         } catch (error) {
-            console.error('渲染页面失败:', error);
+            // 忽略正常的渲染取消错误
+            if (error.name === 'RenderingCancelledException') {
+                console.log('🔄 渲染任务被取消 (正常操作)');
+            } else {
+                console.error('渲染页面失败:', error);
+            }
             this.canvas.classList.remove('fade-out');
             this.canvas.classList.add('fade-in');
         }
