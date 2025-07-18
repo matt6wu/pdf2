@@ -1311,3 +1311,56 @@ body {
         padding: 0.5rem 1rem !important;
     }
 }
+
+/* 缩放和侧边栏按钮样式 */
+#zoomOut {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    border-color: #6c757d;
+    font-size: 1.2rem;
+}
+
+#zoomOut:hover {
+    background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+    border-color: #495057;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+}
+
+#zoomIn {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    border-color: #6c757d;
+    font-size: 1.2rem;
+}
+
+#zoomIn:hover {
+    background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+    border-color: #495057;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+}
+
+#toggleSidebar {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    border-color: #17a2b8;
+    font-size: 1.2rem;
+}
+
+#toggleSidebar:hover {
+    background: linear-gradient(135deg, #138496 0%, #0f6674 100%);
+    border-color: #138496;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(23, 162, 184, 0.4);
+}
+
+#fitToWidth {
+    background: linear-gradient(135deg, #fd7e14 0%, #e55d00 100%);
+    border-color: #fd7e14;
+    font-size: 1.2rem;
+}
+
+#fitToWidth:hover {
+    background: linear-gradient(135deg, #e55d00 0%, #cc5500 100%);
+    border-color: #e55d00;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(253, 126, 20, 0.4);
+}

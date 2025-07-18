@@ -60,6 +60,7 @@ class PDFReader {
         this.zoomInBtn = document.getElementById('zoomIn');
         this.zoomOutBtn = document.getElementById('zoomOut');
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
+        this.fitToWidthBtn = document.getElementById('fitToWidth');
         this.resizeHandle = document.getElementById('resizeHandle');
         this.zoomSlider = document.getElementById('zoomSlider');
         this.progressBar = document.getElementById('progressBar');
@@ -117,6 +118,9 @@ class PDFReader {
 
         // 侧边栏切换
         this.toggleSidebarBtn.addEventListener('click', () => this.toggleSidebar());
+        
+        // 适应屏幕宽度
+        this.fitToWidthBtn.addEventListener('click', () => this.fitToWidth());
         
         // 首页按钮
         this.homeBtn.addEventListener('click', () => this.goHome());
@@ -593,6 +597,24 @@ class PDFReader {
         this.scale = 1.5; // 重置到默认150%
         this.renderPage(this.pageNum);
         this.updateZoomLevel();
+    }
+
+    fitToWidth() {
+        if (!this.pdf) return;
+        
+        // 获取当前页面
+        this.pdf.getPage(this.pageNum).then(page => {
+            const viewport = page.getViewport({ scale: 1.0 });
+            const availableWidth = this.viewerContainer.clientWidth - 80; // 减去边距
+            const newScale = availableWidth / viewport.width;
+            
+            // 限制缩放范围
+            this.scale = Math.max(0.3, Math.min(3.0, newScale));
+            this.renderPage(this.pageNum);
+            this.updateZoomLevel();
+            
+            console.log(`📐 适应屏幕宽度: ${Math.round(this.scale * 100)}%`);
+        });
     }
 
     handleScroll() {
