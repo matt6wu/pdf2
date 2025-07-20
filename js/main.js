@@ -1,4 +1,4 @@
-// MPDF Reader v87-beta - 统一模糊匹配高亮
+// MPDF Reader v90-beta - 文本层重试机制
 // PDF.js 配置
 const pdfjsLib = window.pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/build/pdf.worker.mjs';
@@ -2835,6 +2835,16 @@ class PDFReader {
             return;
         }
         
+        // 检查文本项是否已加载
+        if (!this.textItems || this.textItems.length === 0) {
+            console.log('⚠️ 文本项未就绪，尝试重新创建文本层...');
+            // 延迟重试
+            setTimeout(() => {
+                this.retryTextLayerCreation(text);
+            }, 500);
+            return;
+        }
+        
         // 清除之前的高亮
         this.clearTextHighlight();
         
@@ -2843,30 +2853,53 @@ class PDFReader {
             console.log('📝 可用文本项:', this.textItems.length);
             
             let highlightCount = 0;
+            const maxHighlights = 3; // 限制最多高亮3个元素
             
-            // 使用相同的模糊匹配逻辑
-            this.textItems.forEach((item, index) => {
+            // 首先找到匹配的文本项
+            let firstMatchItem = null;
+            for (let i = 0; i < this.textItems.length; i++) {
+                const item = this.textItems[i];
                 if (item.str && text) {
-                    // 创建简化版本的模糊匹配
                     const isMatch = this.fuzzyMatchForPDF(item.str, text);
-                    
                     if (isMatch) {
-                        // 创建高亮元素
-                        const highlight = document.createElement('div');
-                        highlight.className = 'pdf-text-highlight';
-                        highlight.style.position = 'absolute';
-                        highlight.style.left = (item.transform[4] * this.scale) + 'px';
-                        highlight.style.top = (this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale) + 'px';
-                        highlight.style.width = Math.max(item.width * this.scale, 50) + 'px';
-                        highlight.style.height = Math.max(item.height * this.scale, 20) + 'px';
-                        
-                        this.highlightOverlay.appendChild(highlight);
-                        highlightCount++;
-                        
-                        console.log(`✨ PDF高亮文本项 ${index}: "${item.str}"`);
+                        firstMatchItem = item;
+                        break;
                     }
                 }
-            });
+            }
+            
+            if (firstMatchItem) {
+                // 获取匹配项的Y坐标（行位置）
+                const targetY = firstMatchItem.transform[5];
+                const tolerance = 5; // Y坐标容差
+                
+                // 找到同一行的所有文本项
+                const sameLineItems = this.textItems.filter(item => {
+                    const itemY = item.transform[5];
+                    return Math.abs(itemY - targetY) <= tolerance && item.str && item.str.trim();
+                });
+                
+                // 按X坐标排序，确保从左到右的顺序
+                sameLineItems.sort((a, b) => a.transform[4] - b.transform[4]);
+                
+                console.log(`🔍 找到同一行文本项 ${sameLineItems.length} 个`);
+                
+                // 高亮整行文本
+                sameLineItems.forEach((item, index) => {
+                    const highlight = document.createElement('div');
+                    highlight.className = 'pdf-text-highlight';
+                    highlight.style.position = 'absolute';
+                    highlight.style.left = (item.transform[4] * this.scale) + 'px';
+                    highlight.style.top = (this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale) + 'px';
+                    highlight.style.width = Math.max(item.width * this.scale, 50) + 'px';
+                    highlight.style.height = Math.max(item.height * this.scale, 20) + 'px';
+                    
+                    this.highlightOverlay.appendChild(highlight);
+                    highlightCount++;
+                    
+                    console.log(`✨ 高亮第一行文本项 ${index + 1}: "${item.str}"`);
+                });
+            }
             
             this.currentHighlightedText = text;
             console.log(`✨ PDF文本高亮已应用，高亮了 ${highlightCount} 个元素`);
@@ -2988,39 +3021,62 @@ class PDFReader {
         return originalPos;
     }
     
-    // PDF专用模糊匹配函数
+    // PDF专用精确模糊匹配函数
     fuzzyMatchForPDF(itemText, searchText) {
         if (!itemText || !searchText) {
             return false;
         }
         
-        // 1. 精确匹配
-        if (itemText.includes(searchText)) {
-            return true;
-        }
-        
-        // 2. 清理文本后匹配
+        // 清理文本
         const cleanItem = itemText.replace(/[\s\n\r\t.,;:!?""''（）()【】\[\]]/g, '');
         const cleanSearch = searchText.replace(/[\s\n\r\t.,;:!?""''（）()【】\[\]]/g, '');
         
-        if (cleanItem.includes(cleanSearch)) {
+        // 跳过太短的文本项，避免过度匹配
+        if (cleanItem.length < 2) {
+            return false;
+        }
+        
+        // 1. 精确匹配（优先长文本）
+        if (cleanItem.length >= 8 && cleanSearch.includes(cleanItem)) {
             return true;
         }
         
-        // 3. 双向前缀匹配
-        if (cleanSearch.length >= 5) {
-            const searchPrefix = cleanSearch.substring(0, 5);
-            if (cleanItem.includes(searchPrefix)) {
+        // 2. 前缀匹配（确保足够长）
+        if (cleanSearch.length >= 8 && cleanItem.length >= 6) {
+            const searchPrefix = cleanSearch.substring(0, 8);
+            if (cleanItem.startsWith(searchPrefix.substring(0, 6))) {
                 return true;
             }
         }
         
-        // 4. 检查搜索文本是否包含该文本项（用于短文本项）
-        if (cleanItem.length >= 3 && cleanSearch.includes(cleanItem)) {
+        // 3. 包含匹配（但要求文本项足够长）
+        if (cleanItem.length >= 5 && cleanSearch.includes(cleanItem)) {
             return true;
         }
         
         return false;
+    }
+    
+    // 重试文本层创建
+    async retryTextLayerCreation(text) {
+        if (!this.pdfDoc) return;
+        
+        try {
+            console.log('🔄 重试创建文本层...');
+            const page = await this.pdfDoc.getPage(this.pageNum);
+            const viewport = page.getViewport({ scale: this.scale });
+            await this.createTextLayer(page, viewport);
+            
+            // 重新尝试高亮
+            if (this.textItems && this.textItems.length > 0) {
+                console.log('✅ 文本层重建成功，重新尝试高亮');
+                this.highlightTextOnPage(text);
+            } else {
+                console.log('❌ 文本层重建后仍然没有文本项');
+            }
+        } catch (error) {
+            console.error('❌ 重试创建文本层失败:', error);
+        }
     }
     
 }
