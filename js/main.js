@@ -1,4 +1,4 @@
-// MPDF Reader v91-beta - 性能优化版本
+// MPDF Reader v92-beta - 深度性能优化版本
 // PDF.js 配置
 const pdfjsLib = window.pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/build/pdf.worker.mjs';
@@ -7,6 +7,31 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/build/pdf.worker.mjs';
 const PERFORMANCE_MODE = true; // 生产环境设为true，开发环境设为false
 const ENABLE_HIGHLIGHT = true; // 可关闭高亮功能以提升性能
 const debugLog = PERFORMANCE_MODE ? () => {} : console.log;
+
+// v3.1性能优化 - 防抖和节流工具函数
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+function throttle(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        if (!timeout) {
+            func(...args);
+            timeout = setTimeout(() => {
+                timeout = null;
+            }, wait);
+        }
+    };
+}
 
 class PDFReader {
     constructor() {
@@ -29,7 +54,8 @@ class PDFReader {
         this.appStartTime = Date.now(); // 应用启动时间
         this.totalUsageTime = 0; // 累积使用时间（毫秒）
         this.isTimeWidgetMinimized = false; // 时间浮标是否最小化
-        this.timeUpdateInterval = null; // 时间更新定时器
+        this.timeUpdateInterval = null; // 时间更新定时器 (已废弃)
+        this.isTimeTrackingActive = false; // v3.1性能优化 - 时间跟踪状态
         this.allAudios = []; // 所有音频实例列表
         this.preloadTimeouts = []; // 预加载定时器列表
         this.hoverTimeout = null; // 悬停防抖定时器
@@ -58,6 +84,8 @@ class PDFReader {
         this.highlightOverlay = null; // 高亮遮罩层
         this.highlightCache = new Map(); // 高亮位置缓存
         this.lastHighlightedElements = []; // 上次高亮的元素，避免重复创建
+        this.textContentCache = new Map(); // v3.1性能优化 - 文本内容缓存
+        this.renderCache = new Map(); // v3.1性能优化 - 渲染缓存
         
         this.initializeElements();
         this.initDB();
@@ -393,17 +421,15 @@ class PDFReader {
     }
 
     setupWindowResize() {
-        // 监听窗口大小变化，自动调整PDF显示
-        window.addEventListener('resize', () => {
+        // v3.1性能优化 - 使用防抖减少频繁重绘
+        const debouncedResize = debounce(() => {
             if (this.pdfDoc && this.pageNum) {
-                // 延迟调整以避免过于频繁的重新渲染
-                clearTimeout(this.resizeTimeout);
-                this.resizeTimeout = setTimeout(() => {
-                    this.adjustPDFScale();
-                    this.renderPage(this.pageNum);
-                }, 300);
+                this.adjustPDFScale();
+                this.renderPage(this.pageNum);
             }
-        });
+        }, 300);
+        
+        window.addEventListener('resize', debouncedResize);
     }
 
     adjustPDFScale() {
@@ -556,6 +582,15 @@ class PDFReader {
             return;
         }
 
+        // v3.1性能优化 - 检查渲染缓存
+        const cacheKey = `${pageNumber}-${this.scale.toFixed(3)}`;
+        if (this.renderCache.has(cacheKey) && !showTransition && !scrollToTop) {
+            debugLog(`⚡ 使用渲染缓存: 第${pageNumber}页，缩放${this.scale.toFixed(3)}`);
+            const cachedImageData = this.renderCache.get(cacheKey);
+            this.ctx.putImageData(cachedImageData, 0, 0);
+            return;
+        }
+
         // 取消之前的渲染任务
         if (this.currentRenderTask) {
             this.currentRenderTask.cancel();
@@ -606,6 +641,22 @@ class PDFReader {
             this.currentRenderTask = page.render(renderContext);
             await this.currentRenderTask.promise;
             this.currentRenderTask = null;
+            
+            // v3.1性能优化 - 保存渲染结果到缓存
+            try {
+                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                this.renderCache.set(cacheKey, imageData);
+                debugLog(`💾 缓存渲染结果: 第${pageNumber}页，缩放${this.scale.toFixed(3)}`);
+                
+                // 限制缓存大小，避免内存泄漏
+                if (this.renderCache.size > 5) {
+                    const firstKey = this.renderCache.keys().next().value;
+                    this.renderCache.delete(firstKey);
+                    debugLog(`🗑️ 清理渲染缓存，移除${firstKey}`);
+                }
+            } catch (cacheError) {
+                debugLog('⚠️ 渲染缓存保存失败:', cacheError);
+            }
             
             // Beta v2.9 - 创建文本层用于高亮
             await this.createTextLayer(page, viewport);
@@ -796,16 +847,10 @@ class PDFReader {
         });
     }
 
-    handleScroll() {
-        // 使用防抖机制，避免频繁保存
-        if (this.scrollSaveTimeout) {
-            clearTimeout(this.scrollSaveTimeout);
-        }
-        
-        this.scrollSaveTimeout = setTimeout(() => {
-            this.saveReadingProgress();
-        }, 1000); // 1秒后保存滚动位置
-    }
+    // v3.1性能优化 - 使用节流替代防抖，减少性能消耗
+    handleScroll = throttle(() => {
+        this.saveReadingProgress();
+    }, 1000);
 
     async handleWheel(event) {
         // 如果按住Ctrl/Cmd键，则为缩放功能
@@ -1562,14 +1607,12 @@ class PDFReader {
         try {
             debugLog('🔍 开始自动检测PDF语言...');
             
-            // 检测前3页的文本内容
+            // v3.1性能优化 - 检测前3页的文本内容使用缓存
             let allText = '';
             const maxPages = Math.min(3, this.pageCount);
             
             for (let i = 1; i <= maxPages; i++) {
-                const page = await this.pdfDoc.getPage(i);
-                const textContent = await page.getTextContent();
-                const pageText = textContent.items.map(item => item.str).join(' ');
+                const pageText = await this.getPageText(i);
                 allText += pageText + ' ';
             }
             
@@ -1738,15 +1781,8 @@ class PDFReader {
         debugLog(`🔊 开始朗读第 ${this.pageNum} 页`);
         
         try {
-            const page = await this.pdfDoc.getPage(this.pageNum);
-            const textContent = await page.getTextContent();
-            
-            // 提取页面文本
-            const pageText = textContent.items
-                .map(item => item.str)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim();
+            // v3.1性能优化 - 使用缓存的文本内容
+            const pageText = await this.getPageText(this.pageNum);
             
             debugLog(`📝 页面文本提取完成，长度: ${pageText.length} 字符`);
             
@@ -2093,26 +2129,23 @@ class PDFReader {
         }
         
         try {
-            const page = await this.pdfDoc.getPage(this.pageNum);
-            const textContent = await page.getTextContent();
+            // v3.1性能优化 - 使用缓存的文本内容
+            const pageText = await this.getPageText(this.pageNum);
             
-            // 提取页面文本
-            const pageText = textContent.items
-                .map(item => item.str)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim();
+            // v3.1性能优化 - 获取文本内容和项目数量
+            const textContent = await this.getPageTextContent(this.pageNum);
+            const itemCount = textContent ? textContent.items.length : 0;
             
             debugLog('=== 文本提取测试结果 ===');
             debugLog(`页面: ${this.pageNum}`);
-            debugLog(`文本项数量: ${textContent.items.length}`);
+            debugLog(`文本项数量: ${itemCount}`);
             debugLog(`文本长度: ${pageText.length}`);
             debugLog(`提取的文本: "${pageText}"`);
             
             // 返回提取的文本和元数据
             return {
                 pageNumber: this.pageNum,
-                itemCount: textContent.items.length,
+                itemCount: itemCount,
                 textLength: pageText.length,
                 text: pageText,
                 success: true
@@ -2704,11 +2737,30 @@ class PDFReader {
         debugLog('⏰ 时间统计功能已初始化');
     }
 
-    // 开始时间统计
+    // 开始时间统计 (v3.1性能优化 - 使用requestIdleCallback)
     startTimeTracking() {
-        this.timeUpdateInterval = setInterval(() => {
-            this.updateTimeDisplay();
-        }, 1000);
+        this.isTimeTrackingActive = true;
+        this.scheduleTimeUpdate();
+    }
+    
+    // 使用requestIdleCallback减少CPU占用
+    scheduleTimeUpdate() {
+        if (!this.isTimeTrackingActive) return;
+        
+        // 使用requestIdleCallback，在浏览器空闲时更新
+        if (window.requestIdleCallback) {
+            requestIdleCallback(() => {
+                this.updateTimeDisplay();
+                // 延迟1秒后再次调度
+                setTimeout(() => this.scheduleTimeUpdate(), 1000);
+            }, { timeout: 2000 });
+        } else {
+            // 降级到普通timeout（但CPU占用已大幅减少）
+            setTimeout(() => {
+                this.updateTimeDisplay();
+                this.scheduleTimeUpdate();
+            }, 1000);
+        }
     }
 
     // 更新时间显示
@@ -2785,9 +2837,9 @@ class PDFReader {
             // 清除之前的文本层
             this.clearTextLayer();
             
-            // 获取文本内容
-            const textContent = await page.getTextContent();
-            this.textItems = textContent.items;
+            // v3.1性能优化 - 获取文本内容使用缓存
+            const textContent = await this.getPageTextContent(this.pageNum);
+            this.textItems = textContent ? textContent.items : [];
             
             // 创建文本层容器
             this.textLayer = document.createElement('div');
@@ -2833,6 +2885,48 @@ class PDFReader {
         }
         this.textItems = [];
         this.currentHighlightedText = null;
+    }
+    
+    // v3.1性能优化 - 统一的文本内容获取与缓存
+    async getPageTextContent(pageNum) {
+        // 检查缓存
+        if (this.textContentCache.has(pageNum)) {
+            debugLog(`📖 使用缓存的第${pageNum}页文本内容`);
+            return this.textContentCache.get(pageNum);
+        }
+        
+        try {
+            const page = await this.pdfDoc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            
+            // 缓存文本内容
+            this.textContentCache.set(pageNum, textContent);
+            debugLog(`💾 缓存第${pageNum}页文本内容`);
+            
+            // 限制缓存大小，避免内存泄漏
+            if (this.textContentCache.size > 10) {
+                const firstKey = this.textContentCache.keys().next().value;
+                this.textContentCache.delete(firstKey);
+                debugLog(`🗑️ 清理文本缓存，移除第${firstKey}页`);
+            }
+            
+            return textContent;
+        } catch (error) {
+            console.error(`❌ 获取第${pageNum}页文本失败:`, error);
+            return null;
+        }
+    }
+    
+    // v3.1性能优化 - 获取页面文本字符串
+    async getPageText(pageNum) {
+        const textContent = await this.getPageTextContent(pageNum);
+        if (!textContent) return '';
+        
+        return textContent.items
+            .map(item => item.str)
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
     
     // Beta v2.9 - 高亮PDF页面上的文本（v91性能优化版本）
