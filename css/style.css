@@ -1669,3 +1669,39 @@ body {
     opacity: 0.9;
     font-size: 0.65rem;
 }
+
+/* Beta v2.9 - PDF文本高亮样式 */
+.pdf-text-layer {
+    pointer-events: none;
+    z-index: 10 !important;
+}
+
+.pdf-highlight-overlay {
+    pointer-events: none;
+    z-index: 11 !important;
+}
+
+.pdf-text-highlight {
+    background-color: rgba(255, 215, 0, 0.8) !important;
+    border: 2px solid rgba(255, 193, 7, 0.9) !important;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(255, 215, 0, 0.6);
+    transition: all 0.3s ease;
+    animation: highlightPulse 2s infinite;
+    z-index: 12 !important;
+}
+
+@keyframes highlightPulse {
+    0% {
+        background-color: rgba(255, 215, 0, 0.6);
+        box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+    }
+    50% {
+        background-color: rgba(255, 193, 7, 0.8);
+        box-shadow: 0 4px 16px rgba(255, 193, 7, 0.5);
+    }
+    100% {
+        background-color: rgba(255, 215, 0, 0.6);
+        box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+    }
+}

@@ -45,6 +45,12 @@ class PDFReader {
         this.db = null;
         this.currentPDFData = null; // 当前PDF的二进制数据
         
+        // Beta v2.9 - 文本高亮功能
+        this.textLayer = null; // PDF文本层
+        this.currentHighlightedText = null; // 当前高亮的文本
+        this.textItems = []; // 当前页面的文本项
+        this.highlightOverlay = null; // 高亮遮罩层
+        
         this.initializeElements();
         this.initDB();
         this.setupEventListeners();
@@ -592,6 +598,10 @@ class PDFReader {
             this.currentRenderTask = page.render(renderContext);
             await this.currentRenderTask.promise;
             this.currentRenderTask = null;
+            
+            // Beta v2.9 - 创建文本层用于高亮
+            await this.createTextLayer(page, viewport);
+            
             this.pageNum = pageNumber;
             this.updatePageInfo();
             this.updateNavigationButtons();
@@ -2153,6 +2163,9 @@ class PDFReader {
         this.updateGoToReadingPageButton();
         this.hideReadingContentPanel();
         
+        // Beta v2.9 - 清除PDF页面高亮
+        this.clearTextHighlight();
+        
         console.log('🔇 朗读功能已彻底停止，所有音频和定时器已清理，已恢复到平静状态');
     }
 
@@ -2350,6 +2363,9 @@ class PDFReader {
             if (this.readingContentPanel.style.display !== 'none') {
                 this.scrollToCurrentSegment();
             }
+            
+            // Beta v2.9 - 在PDF页面上高亮当前朗读的文本
+            this.highlightTextOnPage(currentSegmentText);
         }
         
         // 更新进度
@@ -2753,6 +2769,127 @@ class PDFReader {
         this.updateTimeDisplay();
         console.log('⏰ 使用时间计数器已重置');
     }
+
+    // Beta v2.9 - 创建文本层用于高亮
+    async createTextLayer(page, viewport) {
+        try {
+            // 清除之前的文本层
+            this.clearTextLayer();
+            
+            // 获取文本内容
+            const textContent = await page.getTextContent();
+            this.textItems = textContent.items;
+            
+            // 创建文本层容器
+            this.textLayer = document.createElement('div');
+            this.textLayer.className = 'pdf-text-layer';
+            this.textLayer.style.position = 'absolute';
+            this.textLayer.style.left = this.canvas.offsetLeft + 'px';
+            this.textLayer.style.top = this.canvas.offsetTop + 'px';
+            this.textLayer.style.width = viewport.width + 'px';
+            this.textLayer.style.height = viewport.height + 'px';
+            this.textLayer.style.pointerEvents = 'none';
+            this.textLayer.style.zIndex = '10';
+            
+            // 创建高亮遮罩层
+            this.highlightOverlay = document.createElement('div');
+            this.highlightOverlay.className = 'pdf-highlight-overlay';
+            this.highlightOverlay.style.position = 'absolute';
+            this.highlightOverlay.style.left = '0';
+            this.highlightOverlay.style.top = '0';
+            this.highlightOverlay.style.width = '100%';
+            this.highlightOverlay.style.height = '100%';
+            this.highlightOverlay.style.pointerEvents = 'none';
+            this.highlightOverlay.style.zIndex = '11';
+            
+            this.textLayer.appendChild(this.highlightOverlay);
+            
+            // 将文本层添加到PDF容器
+            this.pdfContainer.appendChild(this.textLayer);
+            
+            console.log('📝 文本层已创建，包含', this.textItems.length, '个文本项');
+        } catch (error) {
+            console.error('❌ 创建文本层失败:', error);
+        }
+    }
+    
+    // Beta v2.9 - 清除文本层
+    clearTextLayer() {
+        if (this.textLayer) {
+            this.textLayer.remove();
+            this.textLayer = null;
+        }
+        if (this.highlightOverlay) {
+            this.highlightOverlay = null;
+        }
+        this.textItems = [];
+        this.currentHighlightedText = null;
+    }
+    
+    // Beta v2.9 - 高亮PDF页面上的文本
+    highlightTextOnPage(text) {
+        if (!this.textLayer || !this.highlightOverlay || !text) {
+            console.log('❌ 高亮条件不满足:', { textLayer: !!this.textLayer, highlightOverlay: !!this.highlightOverlay, text: !!text });
+            return;
+        }
+        
+        // 清除之前的高亮
+        this.clearTextHighlight();
+        
+        try {
+            // 使用前几个字符进行匹配
+            const searchText = text.trim().substring(0, 15);
+            console.log('🔍 搜索文本:', searchText);
+            console.log('📝 可用文本项:', this.textItems.length);
+            
+            let highlightCount = 0;
+            
+            this.textItems.forEach((item, index) => {
+                if (item.str && searchText && (
+                    item.str.includes(searchText.substring(0, 8)) || 
+                    searchText.includes(item.str.trim())
+                )) {
+                    // 创建高亮元素
+                    const highlight = document.createElement('div');
+                    highlight.className = 'pdf-text-highlight';
+                    highlight.style.position = 'absolute';
+                    highlight.style.left = (item.transform[4] * this.scale) + 'px';
+                    highlight.style.top = (this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale) + 'px';
+                    highlight.style.width = Math.max(item.width * this.scale, 50) + 'px';
+                    highlight.style.height = Math.max(item.height * this.scale, 20) + 'px';
+                    highlight.style.backgroundColor = 'rgba(255, 215, 0, 0.8)';
+                    highlight.style.border = '2px solid rgba(255, 193, 7, 0.9)';
+                    highlight.style.borderRadius = '4px';
+                    highlight.style.zIndex = '999';
+                    highlight.style.animation = 'highlightPulse 2s infinite';
+                    
+                    this.highlightOverlay.appendChild(highlight);
+                    highlightCount++;
+                    
+                    console.log(`✨ 高亮文本项 ${index}: "${item.str}" 位置:`, {
+                        left: item.transform[4] * this.scale,
+                        top: this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale,
+                        width: item.width * this.scale,
+                        height: item.height * this.scale
+                    });
+                }
+            });
+            
+            this.currentHighlightedText = text;
+            console.log(`✨ 文本高亮已应用: "${searchText}", 高亮了 ${highlightCount} 个元素`);
+        } catch (error) {
+            console.error('❌ 文本高亮失败:', error);
+        }
+    }
+    
+    // Beta v2.9 - 清除文本高亮
+    clearTextHighlight() {
+        if (this.highlightOverlay) {
+            this.highlightOverlay.innerHTML = '';
+        }
+        this.currentHighlightedText = null;
+    }
+    
 }
 
 // 初始化应用
