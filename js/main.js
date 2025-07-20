@@ -2857,11 +2857,6 @@ class PDFReader {
                     highlight.style.top = (this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale) + 'px';
                     highlight.style.width = Math.max(item.width * this.scale, 50) + 'px';
                     highlight.style.height = Math.max(item.height * this.scale, 20) + 'px';
-                    highlight.style.backgroundColor = 'rgba(255, 215, 0, 0.8)';
-                    highlight.style.border = '2px solid rgba(255, 193, 7, 0.9)';
-                    highlight.style.borderRadius = '4px';
-                    highlight.style.zIndex = '999';
-                    highlight.style.animation = 'highlightPulse 2s infinite';
                     
                     this.highlightOverlay.appendChild(highlight);
                     highlightCount++;
