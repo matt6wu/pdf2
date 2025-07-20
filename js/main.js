@@ -1,7 +1,12 @@
-// MPDF Reader v90-beta - 文本层重试机制
+// MPDF Reader v91-beta - 性能优化版本
 // PDF.js 配置
 const pdfjsLib = window.pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/build/pdf.worker.mjs';
+
+// 性能模式控制
+const PERFORMANCE_MODE = true; // 生产环境设为true，开发环境设为false
+const ENABLE_HIGHLIGHT = true; // 可关闭高亮功能以提升性能
+const debugLog = PERFORMANCE_MODE ? () => {} : console.log;
 
 class PDFReader {
     constructor() {
@@ -46,11 +51,13 @@ class PDFReader {
         this.db = null;
         this.currentPDFData = null; // 当前PDF的二进制数据
         
-        // Beta v2.9 - 文本高亮功能
+        // Beta v2.9 - 文本高亮功能 (v91性能优化)
         this.textLayer = null; // PDF文本层
         this.currentHighlightedText = null; // 当前高亮的文本
         this.textItems = []; // 当前页面的文本项
         this.highlightOverlay = null; // 高亮遮罩层
+        this.highlightCache = new Map(); // 高亮位置缓存
+        this.lastHighlightedElements = []; // 上次高亮的元素，避免重复创建
         
         this.initializeElements();
         this.initDB();
@@ -77,7 +84,7 @@ class PDFReader {
         this.zoomOutBtn = document.getElementById('zoomOut');
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
         this.fitToWidthBtn = document.getElementById('fitToWidth');
-        console.log('🔍 fitToWidthBtn 元素:', this.fitToWidthBtn);
+        debugLog('🔍 fitToWidthBtn 元素:', this.fitToWidthBtn);
         this.resizeHandle = document.getElementById('resizeHandle');
         this.zoomSlider = document.getElementById('zoomSlider');
         this.progressBar = document.getElementById('progressBar');
@@ -121,14 +128,14 @@ class PDFReader {
         this.expandTimeWidget = document.getElementById('expandTimeWidget');
         
         // 调试：检查按钮是否正确获取
-        console.log('🔍 按钮初始化检查:');
-        console.log('readAloudBtn:', this.readAloudBtn);
-        console.log('stopReadingBtn:', this.stopReadingBtn);
-        console.log('goToReadingPageBtn:', this.goToReadingPageBtn);
-        console.log('readingContentPanel:', this.readingContentPanel);
-        console.log('readingText:', this.readingText);
-        console.log('dropZone:', this.dropZone);
-        console.log('fileInput:', this.fileInput);
+        debugLog('🔍 按钮初始化检查:');
+        debugLog('readAloudBtn:', this.readAloudBtn);
+        debugLog('stopReadingBtn:', this.stopReadingBtn);
+        debugLog('goToReadingPageBtn:', this.goToReadingPageBtn);
+        debugLog('readingContentPanel:', this.readingContentPanel);
+        debugLog('readingText:', this.readingText);
+        debugLog('dropZone:', this.dropZone);
+        debugLog('fileInput:', this.fileInput);
         this.uploadModal = document.getElementById('uploadModal');
         this.uploadDropZone = document.getElementById('uploadDropZone');
         this.uploadFileInput = document.getElementById('uploadFileInput');
@@ -163,7 +170,7 @@ class PDFReader {
         
         // 适应屏幕宽度
         this.fitToWidthBtn.addEventListener('click', () => {
-            console.log('🖱️ Fit按钮被点击');
+            debugLog('🖱️ Fit按钮被点击');
             this.fitToWidth();
         });
         
@@ -416,11 +423,11 @@ class PDFReader {
             const viewport = page.getViewport({ scale: 1.0 });
             const pdfWidth = viewport.width;
             
-            console.log(`🔍 adjustPDFScale: 容器宽度=${availableWidth}, PDF宽度=${pdfWidth}`);
+            debugLog(`🔍 adjustPDFScale: 容器宽度=${availableWidth}, PDF宽度=${pdfWidth}`);
             
             // 主要基于宽度来计算缩放比例，让PDF自然适应容器宽度
             let newScale = availableWidth / pdfWidth;
-            console.log(`🔍 adjustPDFScale: 计算的缩放=${newScale.toFixed(3)}`);
+            debugLog(`🔍 adjustPDFScale: 计算的缩放=${newScale.toFixed(3)}`);
             
             // 验证计算结果是否合理
             if (newScale <= 0 || !isFinite(newScale)) {
@@ -430,16 +437,16 @@ class PDFReader {
             
             // 限制缩放范围，但允许更大的范围
             newScale = Math.max(0.3, Math.min(3.0, newScale));
-            console.log(`🔍 adjustPDFScale: 限制后的缩放=${newScale.toFixed(3)}, 当前缩放=${this.scale.toFixed(3)}`);
+            debugLog(`🔍 adjustPDFScale: 限制后的缩放=${newScale.toFixed(3)}, 当前缩放=${this.scale.toFixed(3)}`);
             
             // 只有当缩放变化较大时才更新
             if (Math.abs(this.scale - newScale) > 0.1) {
-                console.log(`🎯 adjustPDFScale: 更新缩放从${this.scale.toFixed(3)}到${newScale.toFixed(3)}`);
+                debugLog(`🎯 adjustPDFScale: 更新缩放从${this.scale.toFixed(3)}到${newScale.toFixed(3)}`);
                 this.scale = newScale;
                 this.updateZoomLevel();
                 this.updateSliderPosition();
             } else {
-                console.log('🔍 adjustPDFScale: 缩放变化太小，跳过更新');
+                debugLog('🔍 adjustPDFScale: 缩放变化太小，跳过更新');
             }
         }).catch(error => {
             console.error('调整PDF缩放失败:', error);
@@ -483,7 +490,7 @@ class PDFReader {
     async loadPDF(file) {
         // 停止当前播放会话
         if (this.isReading) {
-            console.log('📚 上传新书，停止当前播放会话');
+            debugLog('📚 上传新书，停止当前播放会话');
             this.stopReading();
         }
         
@@ -505,7 +512,7 @@ class PDFReader {
             this.currentBookName = file.name;
             this.currentBookId = this.generateBookId(file.name, file.size);
             this.currentPDFData = pdfDataForStorage; // 保存PDF数据用于本地存储
-            console.log(`📚 加载书籍: ${this.currentBookName} (ID: ${this.currentBookId})`);
+            debugLog(`📚 加载书籍: ${this.currentBookName} (ID: ${this.currentBookId})`);
             
             // 检查是否有阅读记录
             const savedProgress = this.loadReadingProgress(this.currentBookId);
@@ -621,7 +628,7 @@ class PDFReader {
         } catch (error) {
             // 忽略正常的渲染取消错误
             if (error.name === 'RenderingCancelledException') {
-                console.log('🔄 渲染任务被取消 (正常操作)');
+                debugLog('🔄 渲染任务被取消 (正常操作)');
             } else {
                 console.error('渲染页面失败:', error);
             }
@@ -750,40 +757,40 @@ class PDFReader {
     }
 
     fitToWidth() {
-        console.log('🔍 fitToWidth 函数被调用');
+        debugLog('🔍 fitToWidth 函数被调用');
         
         if (!this.pdfDoc) {
-            console.log('❌ PDF未加载，退出fitToWidth');
+            debugLog('❌ PDF未加载，退出fitToWidth');
             return;
         }
         
-        console.log(`📄 当前页码: ${this.pageNum}`);
-        console.log(`📏 容器宽度: ${this.pdfContainer.clientWidth}px`);
+        debugLog(`📄 当前页码: ${this.pageNum}`);
+        debugLog(`📏 容器宽度: ${this.pdfContainer.clientWidth}px`);
         
         // 获取当前页面
         this.pdfDoc.getPage(this.pageNum).then(page => {
-            console.log('✅ 成功获取PDF页面');
+            debugLog('✅ 成功获取PDF页面');
             
             const viewport = page.getViewport({ scale: 1.0 });
-            console.log(`📖 页面原始宽度: ${viewport.width}px`);
-            console.log(`📖 页面原始高度: ${viewport.height}px`);
+            debugLog(`📖 页面原始宽度: ${viewport.width}px`);
+            debugLog(`📖 页面原始高度: ${viewport.height}px`);
             
             const availableWidth = this.pdfContainer.clientWidth - 80; // 减去边距
-            console.log(`📏 可用宽度: ${availableWidth}px`);
+            debugLog(`📏 可用宽度: ${availableWidth}px`);
             
             const newScale = availableWidth / viewport.width;
-            console.log(`🔢 计算的缩放比例: ${newScale.toFixed(3)}`);
+            debugLog(`🔢 计算的缩放比例: ${newScale.toFixed(3)}`);
             
             // 限制缩放范围
             const oldScale = this.scale;
             this.scale = Math.max(0.3, Math.min(3.0, newScale));
-            console.log(`🎯 旧缩放: ${oldScale.toFixed(3)}, 新缩放: ${this.scale.toFixed(3)}`);
+            debugLog(`🎯 旧缩放: ${oldScale.toFixed(3)}, 新缩放: ${this.scale.toFixed(3)}`);
             
             this.renderPage(this.pageNum);
             this.updateZoomLevel();
             this.updateSliderPosition();
             
-            console.log(`📐 适应屏幕宽度完成: ${Math.round(this.scale * 100)}%`);
+            debugLog(`📐 适应屏幕宽度完成: ${Math.round(this.scale * 100)}%`);
         }).catch(error => {
             console.error('❌ fitToWidth 错误:', error);
         });
@@ -823,7 +830,7 @@ class PDFReader {
                 this.scale = 1.0;
             }
             
-            console.log(`🔍 handleWheel: 缩放从${oldScale.toFixed(3)}到${this.scale.toFixed(3)}`);
+            debugLog(`🔍 handleWheel: 缩放从${oldScale.toFixed(3)}到${this.scale.toFixed(3)}`);
             
             this.renderPage(this.pageNum);
             this.updateZoomLevel();
@@ -998,7 +1005,7 @@ class PDFReader {
         // 重置导航按钮
         this.updateNavigationButtons();
         
-        console.log('🏠 已返回主页上传状态');
+        debugLog('🏠 已返回主页上传状态');
     }
     
     toggleLanguage() {
@@ -1010,11 +1017,11 @@ class PDFReader {
         this.languageToggleBtn.dataset.language = newLanguage;
         this.languageSwitchContainer.dataset.active = newLanguage;
         
-        console.log(`🌍 语言切换: ${currentLanguage} → ${newLanguage}`);
+        debugLog(`🌍 语言切换: ${currentLanguage} → ${newLanguage}`);
         
         // 如果正在朗读，停止当前朗读
         if (this.isReading) {
-            console.log('🔄 语言切换时停止当前朗读');
+            debugLog('🔄 语言切换时停止当前朗读');
             this.forceStopReading();
         }
     }
@@ -1024,7 +1031,7 @@ class PDFReader {
         this.languageToggleBtn.checked = true;
         this.languageToggleBtn.dataset.language = 'en';
         this.languageSwitchContainer.dataset.active = 'en';
-        console.log('🌍 语言开关初始化: 默认英文');
+        debugLog('🌍 语言开关初始化: 默认英文');
     }
 
     // 阅读记忆功能相关方法
@@ -1063,7 +1070,7 @@ class PDFReader {
             savedBooks[this.currentBookId] = progress;
             localStorage.setItem('pdfReaderBooks', JSON.stringify(savedBooks));
             
-            console.log(`📚 保存阅读进度: ${this.currentBookName} - 第${this.pageNum}页`);
+            debugLog(`📚 保存阅读进度: ${this.currentBookName} - 第${this.pageNum}页`);
         } catch (error) {
             console.error('❌ 保存阅读进度失败:', error);
         }
@@ -1077,7 +1084,7 @@ class PDFReader {
             const progress = savedBooks[bookId];
             
             if (progress) {
-                console.log(`📖 找到阅读记录: ${progress.bookName} - 第${progress.currentPage}页`);
+                debugLog(`📖 找到阅读记录: ${progress.bookName} - 第${progress.currentPage}页`);
                 return progress;
             }
         } catch (error) {
@@ -1091,12 +1098,12 @@ class PDFReader {
         if (!progress) return;
         
         try {
-            console.log(`🔄 恢复阅读位置: 第${progress.currentPage}页`);
+            debugLog(`🔄 恢复阅读位置: 第${progress.currentPage}页`);
             
             // 确保页码在有效范围内
             const targetPage = Math.min(Math.max(1, progress.currentPage), this.pageCount);
             if (targetPage !== progress.currentPage) {
-                console.log(`⚠️ 页码超出范围，调整为第${targetPage}页`);
+                debugLog(`⚠️ 页码超出范围，调整为第${targetPage}页`);
             }
             
             // 恢复页码
@@ -1115,7 +1122,7 @@ class PDFReader {
             if (progress.scrollPosition) {
                 setTimeout(() => {
                     this.pdfContainer.scrollTop = progress.scrollPosition;
-                    console.log(`📍 恢复滚动位置: ${progress.scrollPosition}px`);
+                    debugLog(`📍 恢复滚动位置: ${progress.scrollPosition}px`);
                 }, 100);
             }
             
@@ -1172,7 +1179,7 @@ class PDFReader {
                 
                 request.onsuccess = () => {
                     this.db = request.result;
-                    console.log('✅ IndexedDB初始化成功');
+                    debugLog('✅ IndexedDB初始化成功');
                     resolve(this.db);
                     
                     // 初始化完成后检查是否有保存的PDF
@@ -1218,7 +1225,7 @@ class PDFReader {
             
             return new Promise((resolve, reject) => {
                 request.onsuccess = () => {
-                    console.log(`💾 PDF已保存到本地: ${this.currentBookName}`);
+                    debugLog(`💾 PDF已保存到本地: ${this.currentBookName}`);
                     resolve();
                 };
                 
@@ -1244,7 +1251,7 @@ class PDFReader {
                 request.onsuccess = () => {
                     const result = request.result;
                     if (result) {
-                        console.log(`📖 从本地加载PDF: ${result.name}`);
+                        debugLog(`📖 从本地加载PDF: ${result.name}`);
                         resolve(result);
                     } else {
                         resolve(null);
@@ -1275,7 +1282,7 @@ class PDFReader {
                 const cursor = event.target.result;
                 if (cursor) {
                     const pdfRecord = cursor.value;
-                    console.log(`🔍 发现保存的PDF: ${pdfRecord.name}`);
+                    debugLog(`🔍 发现保存的PDF: ${pdfRecord.name}`);
                     
                     try {
                         // 直接自动加载最后一次的PDF
@@ -1287,7 +1294,7 @@ class PDFReader {
                         this.pdfViewer.style.display = 'none';
                     }
                 } else {
-                    console.log('📝 没有找到保存的PDF，显示拖拽界面');
+                    debugLog('📝 没有找到保存的PDF，显示拖拽界面');
                     // 没有保存的PDF，显示拖拽界面
                     this.dropZone.style.display = 'flex';
                     this.pdfViewer.style.display = 'none';
@@ -1371,7 +1378,7 @@ class PDFReader {
                     notification.remove();
                 }
                 
-                console.log(`✅ 成功恢复PDF: ${pdfRecord.name}`);
+                debugLog(`✅ 成功恢复PDF: ${pdfRecord.name}`);
             }
         } catch (error) {
             console.error('❌ 恢复PDF失败:', error);
@@ -1406,7 +1413,7 @@ class PDFReader {
         // 重置文件输入
         this.fileInput.value = '';
         
-        console.log('已返回首页');
+        debugLog('已返回首页');
     }
 
     showUploadModal() {
@@ -1469,7 +1476,7 @@ class PDFReader {
             }, 300); // 300ms 延迟
         } else {
             // 如果正在朗读（暂停或播放状态），不响应悬停
-            console.log('🚫 朗读进行中，悬停触发已禁用，请点击按钮操作');
+            debugLog('🚫 朗读进行中，悬停触发已禁用，请点击按钮操作');
         }
     }
 
@@ -1495,19 +1502,19 @@ class PDFReader {
 
     pauseReading() {
         if (this.isReading && !this.isPaused) {
-            console.log('⏸️ 执行暂停操作');
+            debugLog('⏸️ 执行暂停操作');
             
             // 暂停当前音频
             if (this.currentAudio && !this.currentAudio.paused) {
                 this.currentAudio.pause();
-                console.log('⏸️ 暂停当前音频');
+                debugLog('⏸️ 暂停当前音频');
             }
             
             // 暂停所有正在播放的音频
             this.allAudios.forEach((audio, index) => {
                 if (audio && !audio.paused) {
                     audio.pause();
-                    console.log(`⏸️ 暂停音频实例 ${index + 1}`);
+                    debugLog(`⏸️ 暂停音频实例 ${index + 1}`);
                 }
             });
             
@@ -1516,22 +1523,22 @@ class PDFReader {
                 clearTimeout(timeoutId);
             });
             this.preloadTimeouts = [];
-            console.log('⏸️ 暂停预加载任务');
+            debugLog('⏸️ 暂停预加载任务');
             
             this.isPaused = true;
             this.updateReadButton();
-            console.log('⏸️ 朗读已暂停，所有音频和预加载任务已暂停');
+            debugLog('⏸️ 朗读已暂停，所有音频和预加载任务已暂停');
         }
     }
 
     resumeReading() {
         if (this.isReading && this.isPaused) {
-            console.log('▶️ 执行恢复操作');
+            debugLog('▶️ 执行恢复操作');
             
             // 恢复当前音频播放
             if (this.currentAudio && this.currentAudio.paused) {
                 this.currentAudio.play().then(() => {
-                    console.log('▶️ 当前音频恢复播放');
+                    debugLog('▶️ 当前音频恢复播放');
                 }).catch(error => {
                     console.error('▶️ 恢复播放失败:', error);
                 });
@@ -1541,10 +1548,10 @@ class PDFReader {
             this.isPaused = false;
             this.updateReadButton();
             
-            console.log('▶️ 朗读已恢复，继续播放当前段落');
+            debugLog('▶️ 朗读已恢复，继续播放当前段落');
         } else {
-            console.log('⚠️ 无法恢复：当前状态不允许恢复操作');
-            console.log(`⚠️ 调试信息 - isReading: ${this.isReading}, isPaused: ${this.isPaused}`);
+            debugLog('⚠️ 无法恢复：当前状态不允许恢复操作');
+            debugLog(`⚠️ 调试信息 - isReading: ${this.isReading}, isPaused: ${this.isPaused}`);
         }
     }
 
@@ -1553,7 +1560,7 @@ class PDFReader {
         if (!this.pdfDoc) return;
         
         try {
-            console.log('🔍 开始自动检测PDF语言...');
+            debugLog('🔍 开始自动检测PDF语言...');
             
             // 检测前3页的文本内容
             let allText = '';
@@ -1568,15 +1575,15 @@ class PDFReader {
             
             // 检测语言
             const detectedLanguage = this.detectLanguage(allText);
-            console.log(`🌍 检测到的语言: ${detectedLanguage}`);
-            console.log(`📝 分析的文本样本: "${allText.substring(0, 100)}..."`);
+            debugLog(`🌍 检测到的语言: ${detectedLanguage}`);
+            debugLog(`📝 分析的文本样本: "${allText.substring(0, 100)}..."`);
             
             // 设置语言选择开关
             this.languageToggleBtn.dataset.language = detectedLanguage;
             this.languageToggleBtn.checked = detectedLanguage === 'en'; // 英文时checked为true
             this.languageSwitchContainer.dataset.active = detectedLanguage;
             
-            console.log(`✅ 语言选择开关已自动设置为: ${detectedLanguage === 'zh' ? '中文' : 'English'}`);
+            debugLog(`✅ 语言选择开关已自动设置为: ${detectedLanguage === 'zh' ? '中文' : 'English'}`);
             
         } catch (error) {
             console.error('❌ 自动语言检测失败:', error);
@@ -1599,7 +1606,7 @@ class PDFReader {
         const englishMatches = text.match(englishRegex);
         const englishCount = englishMatches ? englishMatches.length : 0;
         
-        console.log(`🔍 语言检测 - 中文字符: ${chineseCount}, 英文字符: ${englishCount}`);
+        debugLog(`🔍 语言检测 - 中文字符: ${chineseCount}, 英文字符: ${englishCount}`);
         
         // 只要有中文字符就判定为中文
         return chineseCount > 0 ? 'zh' : 'en';
@@ -1609,19 +1616,19 @@ class PDFReader {
     splitTextIntelligently(text, maxLength = null) {
         // 使用用户选择的语言（可能是手动选择或自动检测后的结果）
         const selectedLanguage = this.languageToggleBtn.dataset.language;
-        console.log(`🌍 使用当前选择的语言: ${selectedLanguage}`);
+        debugLog(`🌍 使用当前选择的语言: ${selectedLanguage}`);
         
         // 根据语言选择分段长度 - 合理的长度，既不会太短也不会太长
         if (maxLength === null) {
             maxLength = selectedLanguage === 'zh' ? 80 : 300; // 中文调整为80字符，英文保持300字符
         }
         const minLength = selectedLanguage === 'zh' ? 50 : 100; // 中文调整为50字符，英文最小100字符
-        console.log(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}, 最小长度: ${minLength}`);
+        debugLog(`🔍 分段参数 - 语言: ${selectedLanguage}, 最大长度: ${maxLength}, 最小长度: ${minLength}`);
         const segments = [];
         
         // 如果文本长度小于最大长度，直接返回整个文本
         if (text.length <= maxLength) {
-            console.log(`📝 文本长度 ${text.length} 小于最大长度 ${maxLength}，不分段`);
+            debugLog(`📝 文本长度 ${text.length} 小于最大长度 ${maxLength}，不分段`);
             return [text.trim()];
         }
         
@@ -1705,7 +1712,7 @@ class PDFReader {
                 if (combinedSeg.length <= maxLength) {
                     optimizedSegments.push(combinedSeg);
                     i++; // 跳过下一段，因为已经合并了
-                    console.log(`🔧 段落优化: 合并短段落 "${currentSeg.substring(0, 20)}..." + "${nextSeg.substring(0, 20)}..."`);
+                    debugLog(`🔧 段落优化: 合并短段落 "${currentSeg.substring(0, 20)}..." + "${nextSeg.substring(0, 20)}..."`);
                 } else {
                     // 合并后会超长，保持原样
                     optimizedSegments.push(currentSeg);
@@ -1716,9 +1723,9 @@ class PDFReader {
             }
         }
         
-        console.log(`📊 文本分段结果: ${optimizedSegments.length} 段（优化后）`);
+        debugLog(`📊 文本分段结果: ${optimizedSegments.length} 段（优化后）`);
         optimizedSegments.forEach((segment, index) => {
-            console.log(`段 ${index + 1}: "${segment.substring(0, 80)}${segment.length > 80 ? '...' : ''}" (${segment.length} 字符)`);
+            debugLog(`段 ${index + 1}: "${segment.substring(0, 80)}${segment.length > 80 ? '...' : ''}" (${segment.length} 字符)`);
         });
         
         return optimizedSegments;
@@ -1728,7 +1735,7 @@ class PDFReader {
     async startReading() {
         if (!this.pdfDoc || this.isReading) return;
         
-        console.log(`🔊 开始朗读第 ${this.pageNum} 页`);
+        debugLog(`🔊 开始朗读第 ${this.pageNum} 页`);
         
         try {
             const page = await this.pdfDoc.getPage(this.pageNum);
@@ -1741,18 +1748,18 @@ class PDFReader {
                 .replace(/\s+/g, ' ')
                 .trim();
             
-            console.log(`📝 页面文本提取完成，长度: ${pageText.length} 字符`);
+            debugLog(`📝 页面文本提取完成，长度: ${pageText.length} 字符`);
             
             if (!pageText || pageText.length < 10) {
-                console.log('⚠️ 当前页面没有足够的文本内容，尝试跳到下一页');
+                debugLog('⚠️ 当前页面没有足够的文本内容，尝试跳到下一页');
                 
                 // 如果是空白页且不是最后一页，自动跳到下一页继续朗读
                 if (this.pageNum < this.pageCount) {
-                    console.log('📖 跳过空白页，继续朗读下一页');
+                    debugLog('📖 跳过空白页，继续朗读下一页');
                     await this.autoGoToNextPageAndRead();
                     return;
                 } else {
-                    console.log('❌ 已是最后一页且没有文本内容');
+                    debugLog('❌ 已是最后一页且没有文本内容');
                     alert('当前页面没有可朗读的文本内容');
                     return;
                 }
@@ -1760,7 +1767,7 @@ class PDFReader {
             
             // 智能分段
             const segments = this.splitTextIntelligently(pageText);
-            console.log(`📄 文本已分为 ${segments.length} 段进行朗读`);
+            debugLog(`📄 文本已分为 ${segments.length} 段进行朗读`);
             
             this.isReading = true;
             this.readingPageNum = this.pageNum; // 记录开始朗读的页码
@@ -1789,7 +1796,7 @@ class PDFReader {
         
         // 使用用户选择的语言（可能是手动选择或自动检测后的结果）
         const selectedLanguage = this.languageToggleBtn.dataset.language;
-        console.log(`🌍 当前选择的语言: ${selectedLanguage}, 将使用对应的预加载策略`);
+        debugLog(`🌍 当前选择的语言: ${selectedLanguage}, 将使用对应的预加载策略`);
         
         for (let i = 0; i < segments.length; i++) {
             if (!this.isReading) break; // 检查是否被用户停止
@@ -1801,7 +1808,7 @@ class PDFReader {
             
             if (!this.isReading) break; // 再次检查是否被停止
             
-            console.log(`🎵 播放第 ${i+1}/${segments.length} 段`);
+            debugLog(`🎵 播放第 ${i+1}/${segments.length} 段`);
             
             // 更新朗读内容框显示当前段落
             this.updateReadingContentPanel(i, segments[i]);
@@ -1809,12 +1816,12 @@ class PDFReader {
             // 如果有预加载的音频，使用它；否则现场加载
             let audioPromise;
             if (nextAudioPromise) {
-                console.log(`⚡ 使用预加载的第 ${i+1} 段音频`);
+                debugLog(`⚡ 使用预加载的第 ${i+1} 段音频`);
                 audioPromise = nextAudioPromise;
                 nextAudioPromise = null;
                 isPreloadingNext = false;
             } else {
-                console.log(`📡 现场加载第 ${i+1} 段音频`);
+                debugLog(`📡 现场加载第 ${i+1} 段音频`);
                 // 只在第一段时显示加载指示器
                 audioPromise = this.loadSegmentAudio(segments[i], 3, i === 0);
             }
@@ -1827,7 +1834,7 @@ class PDFReader {
                 const timeoutId = setTimeout(() => {
                     if (this.isReading && !this.isPaused && isPreloadingNext) {
                         nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
-                        console.log(`⚡ 开始预加载第 ${i+2} 段`);
+                        debugLog(`⚡ 开始预加载第 ${i+2} 段`);
                     }
                 }, 500); // 延迟0.5秒
                 
@@ -1835,7 +1842,7 @@ class PDFReader {
             } else if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused) {
                 // 第一段播放时立即预加载第二段（中文和英文都预加载）
                 isPreloadingNext = true;
-                console.log(`🎯 第一段播放开始，立即预加载第二段`);
+                debugLog(`🎯 第一段播放开始，立即预加载第二段`);
                 nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
             }
             
@@ -1846,16 +1853,16 @@ class PDFReader {
                 
                 // 播放完成后再次检查状态，防止在播放过程中被暂停或停止
                 if (!this.isReading) {
-                    console.log('⚠️ 播放完成后检测到停止状态，退出播放循环');
+                    debugLog('⚠️ 播放完成后检测到停止状态，退出播放循环');
                     break;
                 }
                 
-                console.log(`✅ 第 ${i+1}/${segments.length} 段播放完成`);
+                debugLog(`✅ 第 ${i+1}/${segments.length} 段播放完成`);
                 
                 // 中文模式：在第一段播放完成后才开始预加载第二段
                 if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext && selectedLanguage === 'zh') {
                     isPreloadingNext = true;
-                    console.log(`🎯 中文模式：第一段播放完成，现在开始预加载第二段`);
+                    debugLog(`🎯 中文模式：第一段播放完成，现在开始预加载第二段`);
                     nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                 }
                 
@@ -1867,7 +1874,7 @@ class PDFReader {
                 // 中文模式：在第一段播放完成后才开始预加载第二段
                 if (i === 0 && i + 1 < segments.length && this.isReading && !this.isPaused && !isPreloadingNext && selectedLanguage === 'zh') {
                     isPreloadingNext = true;
-                    console.log(`🎯 中文模式：第一段播放完成，现在开始预加载第二段`);
+                    debugLog(`🎯 中文模式：第一段播放完成，现在开始预加载第二段`);
                     nextAudioPromise = this.loadSegmentAudio(segments[i + 1]);
                 }
             } catch (error) {
@@ -1875,19 +1882,19 @@ class PDFReader {
                 
                 // 检查是否是因为停止状态而导致的错误
                 if (!this.isReading) {
-                    console.log('🛑 检测到停止状态，退出播放循环');
+                    debugLog('🛑 检测到停止状态，退出播放循环');
                     break;
                 }
                 
                 // 如果是停止错误，退出播放循环
                 if (error.message && error.message.includes('朗读已停止')) {
-                    console.log('🛑 检测到停止信号，退出播放循环');
+                    debugLog('🛑 检测到停止信号，退出播放循环');
                     break;
                 }
                 
                 // 如果是前几段失败，尝试重启TTS服务
                 if (i < 2) {
-                    console.log('🔄 检测到早期段落失败，可能需要重启TTS服务');
+                    debugLog('🔄 检测到早期段落失败，可能需要重启TTS服务');
                 }
                 
                 // 继续播放下一段，不中断整个朗读
@@ -1897,14 +1904,14 @@ class PDFReader {
         
         // 全部播放完成
         if (this.isReading) {
-            console.log('✅ 所有段落播放完成');
+            debugLog('✅ 所有段落播放完成');
             
             // 检查是否需要自动翻页
             if (this.autoNextPage && this.pageNum < this.pageCount) {
-                console.log('📖 自动翻页到下一页并继续朗读');
+                debugLog('📖 自动翻页到下一页并继续朗读');
                 await this.autoGoToNextPageAndRead();
             } else {
-                console.log('📚 已读完最后一页或自动翻页已关闭');
+                debugLog('📚 已读完最后一页或自动翻页已关闭');
                 this.stopReading();
             }
         }
@@ -1913,17 +1920,17 @@ class PDFReader {
     async loadSegmentAudio(text, retryCount = 3, showLoadingIndicator = false) {
         // 在开始加载前检查是否已停止
         if (!this.isReading) {
-            console.log(`🛑 [loadSegmentAudio] 朗读已停止，取消音频加载`);
+            debugLog(`🛑 [loadSegmentAudio] 朗读已停止，取消音频加载`);
             throw new Error('朗读已停止');
         }
         
         // 使用用户选择的语言（可能是手动选择或自动检测后的结果）
         const selectedLanguage = this.languageToggleBtn.dataset.language;
-        console.log(`🌍 TTS使用当前选择的语言: ${selectedLanguage}`);
+        debugLog(`🌍 TTS使用当前选择的语言: ${selectedLanguage}`);
         
         // 生成唯一的请求ID用于调试
         const requestId = Math.random().toString(36).substring(2, 8);
-        console.log(`🔍 [${requestId}] 开始加载音频 - 语言: ${selectedLanguage}, 文本: "${text.substring(0, 30)}..."`);
+        debugLog(`🔍 [${requestId}] 开始加载音频 - 语言: ${selectedLanguage}, 文本: "${text.substring(0, 30)}..."`);
         
         // 只在需要时显示加载指示器（通常是第一段）
         if (showLoadingIndicator) {
@@ -1944,14 +1951,14 @@ class PDFReader {
             try {
                 // 在每次尝试前检查是否已停止
                 if (!this.isReading) {
-                    console.log(`🛑 [${requestId}] 朗读已停止，取消第 ${attempt} 次尝试`);
+                    debugLog(`🛑 [${requestId}] 朗读已停止，取消第 ${attempt} 次尝试`);
                     if (showLoadingIndicator) {
                         this.hideTTSLoadingIndicator();
                     }
                     throw new Error('朗读已停止');
                 }
                 
-                console.log(`📡 [${requestId}] 正在生成${selectedLanguage === 'zh' ? '中文' : '英文'}语音 (尝试 ${attempt}/${retryCount})...`);
+                debugLog(`📡 [${requestId}] 正在生成${selectedLanguage === 'zh' ? '中文' : '英文'}语音 (尝试 ${attempt}/${retryCount})...`);
                 
                 let response;
                 
@@ -1980,11 +1987,11 @@ class PDFReader {
                 
                 // 获取音频数据
                 const audioBlob = await response.blob();
-                console.log(`🎵 [${requestId}] ${selectedLanguage === 'zh' ? '中文' : '英文'}音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+                debugLog(`🎵 [${requestId}] ${selectedLanguage === 'zh' ? '中文' : '英文'}音频生成完成，大小: ${(audioBlob.size / 1024).toFixed(2)} KB`);
                 
                 // 在返回前最后检查一次是否已停止
                 if (!this.isReading) {
-                    console.log(`🛑 [${requestId}] 音频生成完成但朗读已停止，丢弃音频数据`);
+                    debugLog(`🛑 [${requestId}] 音频生成完成但朗读已停止，丢弃音频数据`);
                     if (showLoadingIndicator) {
                         this.hideTTSLoadingIndicator();
                     }
@@ -2002,7 +2009,7 @@ class PDFReader {
                 
                 // 检查是否是因为停止状态而导致的错误
                 if (!this.isReading || (error.message && error.message.includes('朗读已停止'))) {
-                    console.log(`🛑 [${requestId}] 检测到停止状态，取消重试`);
+                    debugLog(`🛑 [${requestId}] 检测到停止状态，取消重试`);
                     if (showLoadingIndicator) {
                         this.hideTTSLoadingIndicator();
                     }
@@ -2022,7 +2029,7 @@ class PDFReader {
                 
                 // 在重试前再次检查是否已停止
                 if (!this.isReading) {
-                    console.log(`🛑 [${requestId}] 重试等待期间检测到停止状态，取消重试`);
+                    debugLog(`🛑 [${requestId}] 重试等待期间检测到停止状态，取消重试`);
                     if (showLoadingIndicator) {
                         this.hideTTSLoadingIndicator();
                     }
@@ -2044,7 +2051,7 @@ class PDFReader {
                 if (this.isReading) {
                     resolve();
                 } else {
-                    console.log('⚠️ 音频播放结束时检测到停止状态');
+                    debugLog('⚠️ 音频播放结束时检测到停止状态');
                     reject(new Error('朗读已停止'));
                 }
             };
@@ -2081,7 +2088,7 @@ class PDFReader {
     // 测试方法：提取当前页面的文本内容
     async testTextExtraction() {
         if (!this.pdfDoc) {
-            console.log('未加载PDF文档');
+            debugLog('未加载PDF文档');
             return null;
         }
         
@@ -2096,11 +2103,11 @@ class PDFReader {
                 .replace(/\s+/g, ' ')
                 .trim();
             
-            console.log('=== 文本提取测试结果 ===');
-            console.log(`页面: ${this.pageNum}`);
-            console.log(`文本项数量: ${textContent.items.length}`);
-            console.log(`文本长度: ${pageText.length}`);
-            console.log(`提取的文本: "${pageText}"`);
+            debugLog('=== 文本提取测试结果 ===');
+            debugLog(`页面: ${this.pageNum}`);
+            debugLog(`文本项数量: ${textContent.items.length}`);
+            debugLog(`文本长度: ${pageText.length}`);
+            debugLog(`提取的文本: "${pageText}"`);
             
             // 返回提取的文本和元数据
             return {
@@ -2122,7 +2129,7 @@ class PDFReader {
     }
 
     stopReading() {
-        console.log('🛑 执行彻底停止朗读操作');
+        debugLog('🛑 执行彻底停止朗读操作');
         
         // 立即设置停止状态，防止新的音频加载
         this.isReading = false;
@@ -2131,7 +2138,7 @@ class PDFReader {
         // 停止所有音频实例
         this.allAudios.forEach((audio, index) => {
             if (audio) {
-                console.log(`⏹️ 停止音频实例 ${index + 1}`);
+                debugLog(`⏹️ 停止音频实例 ${index + 1}`);
                 audio.pause();
                 audio.currentTime = 0;
                 audio.src = ''; // 清空音频源
@@ -2167,7 +2174,7 @@ class PDFReader {
         // Beta v2.9 - 清除PDF页面高亮
         this.clearTextHighlight();
         
-        console.log('🔇 朗读功能已彻底停止，所有音频和定时器已清理，已恢复到平静状态');
+        debugLog('🔇 朗读功能已彻底停止，所有音频和定时器已清理，已恢复到平静状态');
     }
 
     async autoGoToNextPageAndRead() {
@@ -2186,7 +2193,7 @@ class PDFReader {
                     await this.continueReadingCurrentPage();
                 }
             } else {
-                console.log('📚 已到达最后一页，停止朗读');
+                debugLog('📚 已到达最后一页，停止朗读');
                 this.stopReading();
             }
         } catch (error) {
@@ -2206,10 +2213,10 @@ class PDFReader {
                 .replace(/\s+/g, ' ')
                 .trim();
             
-            console.log(`📄 第 ${this.pageNum} 页文本提取完成，长度: ${pageText.length} 字符`);
+            debugLog(`📄 第 ${this.pageNum} 页文本提取完成，长度: ${pageText.length} 字符`);
             
             if (pageText && pageText.length >= 10) {
-                console.log(`📖 开始朗读第 ${this.pageNum} 页`);
+                debugLog(`📖 开始朗读第 ${this.pageNum} 页`);
                 const segments = this.splitTextIntelligently(pageText);
                 this.currentSegmentIndex = 0;
                 this.totalSegmentCount = segments.length;
@@ -2217,13 +2224,13 @@ class PDFReader {
                 this.showReadingContentPanel(pageText, segments);
                 await this.playSegments(segments);
             } else {
-                console.log('⚠️ 当前页面没有足够文本内容，跳过并继续下一页');
+                debugLog('⚠️ 当前页面没有足够文本内容，跳过并继续下一页');
                 
                 // 如果是空白页且不是最后一页，递归继续下一页
                 if (this.pageNum < this.pageCount && this.isReading) {
                     await this.autoGoToNextPageAndRead();
                 } else {
-                    console.log('📚 已到达最后一页或没有更多内容，停止朗读');
+                    debugLog('📚 已到达最后一页或没有更多内容，停止朗读');
                     this.stopReading();
                 }
             }
@@ -2234,13 +2241,13 @@ class PDFReader {
     }
 
     forceStopReading() {
-        console.log('🛑 用户强制停止朗读 - 点击停止按钮');
+        debugLog('🛑 用户强制停止朗读 - 点击停止按钮');
         this.stopReading();
     }
 
     goToReadingPage() {
         if (this.isReading && this.readingPageNum !== this.pageNum) {
-            console.log(`📖 跳转到朗读页面: 第 ${this.readingPageNum} 页`);
+            debugLog(`📖 跳转到朗读页面: 第 ${this.readingPageNum} 页`);
             this.renderPage(this.readingPageNum, true, true);
         }
     }
@@ -2274,35 +2281,35 @@ class PDFReader {
     }
 
     updateGoToReadingPageButton() {
-        console.log(`🔍 updateGoToReadingPageButton - isReading: ${this.isReading}, readingPageNum: ${this.readingPageNum}, currentPageNum: ${this.pageNum}`);
+        debugLog(`🔍 updateGoToReadingPageButton - isReading: ${this.isReading}, readingPageNum: ${this.readingPageNum}, currentPageNum: ${this.pageNum}`);
         
         if (this.isReading) {
             this.goToReadingPageBtn.style.display = 'inline-block';
             this.goToReadingPageBtn.innerHTML = `📖 P${this.readingPageNum}`;
             this.goToReadingPageBtn.title = `回到朗读页面（第 ${this.readingPageNum} 页）`;
-            console.log(`✅ 显示回到朗读页面按钮: P${this.readingPageNum}`);
+            debugLog(`✅ 显示回到朗读页面按钮: P${this.readingPageNum}`);
             
             // 如果当前页面不是朗读页面，添加脉冲效果
             if (this.pageNum !== this.readingPageNum) {
                 this.goToReadingPageBtn.classList.add('pulse');
-                console.log(`💫 添加脉冲效果 - 当前页 ${this.pageNum} != 朗读页 ${this.readingPageNum}`);
+                debugLog(`💫 添加脉冲效果 - 当前页 ${this.pageNum} != 朗读页 ${this.readingPageNum}`);
             } else {
                 this.goToReadingPageBtn.classList.remove('pulse');
-                console.log(`📍 移除脉冲效果 - 在朗读页面`);
+                debugLog(`📍 移除脉冲效果 - 在朗读页面`);
             }
         } else {
             this.goToReadingPageBtn.style.display = 'none';
             this.goToReadingPageBtn.classList.remove('pulse');
-            console.log(`❌ 隐藏回到朗读页面按钮 - 未在朗读`);
+            debugLog(`❌ 隐藏回到朗读页面按钮 - 未在朗读`);
         }
     }
 
     // 显示朗读内容框
     showReadingContentPanel(fullText, segments) {
-        console.log('🔍 showReadingContentPanel 被调用');
-        console.log('🔍 readingContentPanel 元素:', this.readingContentPanel);
-        console.log('🔍 readingText 元素:', this.readingText);
-        console.log('🔍 当前最小化状态:', this.isReadingPanelMinimized);
+        debugLog('🔍 showReadingContentPanel 被调用');
+        debugLog('🔍 readingContentPanel 元素:', this.readingContentPanel);
+        debugLog('🔍 readingText 元素:', this.readingText);
+        debugLog('🔍 当前最小化状态:', this.isReadingPanelMinimized);
         
         if (!this.readingContentPanel) {
             console.error('❌ readingContentPanel 元素未找到');
@@ -2326,11 +2333,11 @@ class PDFReader {
         if (this.isReadingPanelMinimized) {
             // 如果之前被最小化，显示浮标而不是完整面板
             this.showFloatingWidget();
-            console.log('📋 朗读内容已更新，保持浮标显示');
+            debugLog('📋 朗读内容已更新，保持浮标显示');
         } else {
             // 正常显示完整面板
             this.readingContentPanel.style.display = 'block';
-            console.log('📋 朗读内容框已显示, 文本长度:', fullText.length);
+            debugLog('📋 朗读内容框已显示, 文本长度:', fullText.length);
         }
     }
 
@@ -2373,7 +2380,7 @@ class PDFReader {
         // 更新进度
         this.updateReadingProgress();
         
-        console.log(`📋 朗读内容框已更新到第 ${segmentIndex + 1} 段`);
+        debugLog(`📋 朗读内容框已更新到第 ${segmentIndex + 1} 段`);
     }
     
     // 自动滚动到当前段落
@@ -2427,7 +2434,7 @@ class PDFReader {
             this.readingContentPanel.style.top = '50%';
             // 重置最小化状态
             this.isReadingPanelMinimized = false;
-            console.log('📋 朗读内容框已隐藏并清理');
+            debugLog('📋 朗读内容框已隐藏并清理');
         }
         // 同时隐藏浮标
         this.hideFloatingWidget();
@@ -2442,7 +2449,7 @@ class PDFReader {
             this.showFloatingWidget();
             // 设置最小化状态
             this.isReadingPanelMinimized = true;
-            console.log('📋 朗读内容框已最小化为浮标');
+            debugLog('📋 朗读内容框已最小化为浮标');
         }
     }
 
@@ -2461,7 +2468,7 @@ class PDFReader {
                 this.scrollToCurrentSegment();
             }, 100); // 稍微延迟一下确保面板完全显示
             
-            console.log('📋 朗读内容框已从浮标展开');
+            debugLog('📋 朗读内容框已从浮标展开');
         }
     }
 
@@ -2471,7 +2478,7 @@ class PDFReader {
             this.readingFloatingWidget.style.display = 'block';
             // 同步进度信息
             this.syncFloatingWidgetProgress();
-            console.log('📋 朗读浮标已显示');
+            debugLog('📋 朗读浮标已显示');
         }
     }
 
@@ -2479,7 +2486,7 @@ class PDFReader {
     hideFloatingWidget() {
         if (this.readingFloatingWidget) {
             this.readingFloatingWidget.style.display = 'none';
-            console.log('📋 朗读浮标已隐藏');
+            debugLog('📋 朗读浮标已隐藏');
         }
     }
 
@@ -2488,7 +2495,7 @@ class PDFReader {
         if (this.floatingCurrentSegment && this.floatingTotalSegments) {
             this.floatingCurrentSegment.textContent = this.currentSegment.textContent;
             this.floatingTotalSegments.textContent = this.totalSegments.textContent;
-            console.log('📋 浮标进度已同步:', this.currentSegment.textContent, this.totalSegments.textContent);
+            debugLog('📋 浮标进度已同步:', this.currentSegment.textContent, this.totalSegments.textContent);
         }
     }
 
@@ -2509,7 +2516,7 @@ class PDFReader {
             this.readingFloatingWidget.classList.add('floating-widget-loading');
         }
         
-        console.log('🎵 TTS加载指示器已显示');
+        debugLog('🎵 TTS加载指示器已显示');
     }
 
     // 隐藏TTS加载指示器
@@ -2529,7 +2536,7 @@ class PDFReader {
             this.readingFloatingWidget.classList.remove('floating-widget-loading');
         }
         
-        console.log('🎵 TTS加载指示器已隐藏');
+        debugLog('🎵 TTS加载指示器已隐藏');
     }
 
     // 设置朗读内容框拖拽功能
@@ -2694,7 +2701,7 @@ class PDFReader {
             }
         });
         
-        console.log('⏰ 时间统计功能已初始化');
+        debugLog('⏰ 时间统计功能已初始化');
     }
 
     // 开始时间统计
@@ -2752,7 +2759,7 @@ class PDFReader {
         this.timeTrackingWidget.style.display = 'none';
         this.timeTrackingMiniWidget.style.display = 'block';
         this.isTimeWidgetMinimized = true;
-        console.log('⏰ 时间统计浮标已最小化');
+        debugLog('⏰ 时间统计浮标已最小化');
     }
 
     // 展开时间统计浮标
@@ -2760,7 +2767,7 @@ class PDFReader {
         this.timeTrackingMiniWidget.style.display = 'none';
         this.timeTrackingWidget.style.display = 'block';
         this.isTimeWidgetMinimized = false;
-        console.log('⏰ 时间统计浮标已展开');
+        debugLog('⏰ 时间统计浮标已展开');
     }
 
     // 重置使用时间计数器
@@ -2769,7 +2776,7 @@ class PDFReader {
         this.appStartTime = Date.now();
         localStorage.setItem('pdfReaderUsageTime', '0');
         this.updateTimeDisplay();
-        console.log('⏰ 使用时间计数器已重置');
+        debugLog('⏰ 使用时间计数器已重置');
     }
 
     // Beta v2.9 - 创建文本层用于高亮
@@ -2809,7 +2816,7 @@ class PDFReader {
             // 将文本层添加到PDF容器
             this.pdfContainer.appendChild(this.textLayer);
             
-            console.log('📝 文本层已创建，包含', this.textItems.length, '个文本项');
+            debugLog('📝 文本层已创建，包含', this.textItems.length, '个文本项');
         } catch (error) {
             console.error('❌ 创建文本层失败:', error);
         }
@@ -2828,17 +2835,29 @@ class PDFReader {
         this.currentHighlightedText = null;
     }
     
-    // Beta v2.9 - 高亮PDF页面上的文本（使用模糊匹配）
+    // Beta v2.9 - 高亮PDF页面上的文本（v91性能优化版本）
     highlightTextOnPage(text) {
-        if (!this.textLayer || !this.highlightOverlay || !text) {
-            console.log('❌ 高亮条件不满足:', { textLayer: !!this.textLayer, highlightOverlay: !!this.highlightOverlay, text: !!text });
+        // 性能模式：可关闭高亮功能
+        if (!ENABLE_HIGHLIGHT || !this.textLayer || !this.highlightOverlay || !text) {
+            return;
+        }
+        
+        // 性能优化：如果是相同文本，直接返回
+        if (this.currentHighlightedText === text) {
+            return;
+        }
+        
+        // 检查缓存
+        const cacheKey = `${this.pageNum}-${text.substring(0, 50)}`;
+        if (this.highlightCache.has(cacheKey)) {
+            const cachedData = this.highlightCache.get(cacheKey);
+            this.applyHighlight(cachedData);
+            this.currentHighlightedText = text;
             return;
         }
         
         // 检查文本项是否已加载
         if (!this.textItems || this.textItems.length === 0) {
-            console.log('⚠️ 文本项未就绪，尝试重新创建文本层...');
-            // 延迟重试
             setTimeout(() => {
                 this.retryTextLayerCreation(text);
             }, 500);
@@ -2849,69 +2868,84 @@ class PDFReader {
         this.clearTextHighlight();
         
         try {
-            console.log('🔍 PDF高亮搜索文本:', text.substring(0, 30) + '...');
-            console.log('📝 可用文本项:', this.textItems.length);
-            
-            let highlightCount = 0;
-            const maxHighlights = 3; // 限制最多高亮3个元素
-            
-            // 首先找到匹配的文本项
+            // 首先找到匹配的文本项（只查找一次）
             let firstMatchItem = null;
-            for (let i = 0; i < this.textItems.length; i++) {
+            for (let i = 0; i < this.textItems.length && !firstMatchItem; i++) {
                 const item = this.textItems[i];
-                if (item.str && text) {
-                    const isMatch = this.fuzzyMatchForPDF(item.str, text);
-                    if (isMatch) {
-                        firstMatchItem = item;
-                        break;
-                    }
+                if (item.str && this.fuzzyMatchForPDF(item.str, text)) {
+                    firstMatchItem = item;
                 }
             }
             
             if (firstMatchItem) {
-                // 获取匹配项的Y坐标（行位置）
                 const targetY = firstMatchItem.transform[5];
-                const tolerance = 5; // Y坐标容差
+                const tolerance = 5;
                 
                 // 找到同一行的所有文本项
                 const sameLineItems = this.textItems.filter(item => {
                     const itemY = item.transform[5];
                     return Math.abs(itemY - targetY) <= tolerance && item.str && item.str.trim();
-                });
+                }).sort((a, b) => a.transform[4] - b.transform[4]);
                 
-                // 按X坐标排序，确保从左到右的顺序
-                sameLineItems.sort((a, b) => a.transform[4] - b.transform[4]);
+                // 计算高亮位置数据
+                const highlightData = sameLineItems.map(item => ({
+                    left: item.transform[4] * this.scale,
+                    top: this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale,
+                    width: Math.max(item.width * this.scale, 50),
+                    height: Math.max(item.height * this.scale, 20)
+                }));
                 
-                console.log(`🔍 找到同一行文本项 ${sameLineItems.length} 个`);
+                // 缓存计算结果
+                this.highlightCache.set(cacheKey, highlightData);
                 
-                // 高亮整行文本
-                sameLineItems.forEach((item, index) => {
-                    const highlight = document.createElement('div');
-                    highlight.className = 'pdf-text-highlight';
-                    highlight.style.position = 'absolute';
-                    highlight.style.left = (item.transform[4] * this.scale) + 'px';
-                    highlight.style.top = (this.textLayer.offsetHeight - item.transform[5] * this.scale - item.height * this.scale) + 'px';
-                    highlight.style.width = Math.max(item.width * this.scale, 50) + 'px';
-                    highlight.style.height = Math.max(item.height * this.scale, 20) + 'px';
-                    
-                    this.highlightOverlay.appendChild(highlight);
-                    highlightCount++;
-                    
-                    console.log(`✨ 高亮第一行文本项 ${index + 1}: "${item.str}"`);
-                });
+                // 应用高亮
+                this.applyHighlight(highlightData);
             }
             
             this.currentHighlightedText = text;
-            console.log(`✨ PDF文本高亮已应用，高亮了 ${highlightCount} 个元素`);
         } catch (error) {
             console.error('❌ 文本高亮失败:', error);
         }
     }
     
-    // Beta v2.9 - 清除文本高亮
+    // 性能优化：批量应用高亮，减少DOM操作
+    applyHighlight(highlightData) {
+        // 创建文档片段，减少重排
+        const fragment = document.createDocumentFragment();
+        this.lastHighlightedElements = [];
+        
+        highlightData.forEach(data => {
+            const highlight = document.createElement('div');
+            highlight.className = 'pdf-text-highlight';
+            highlight.style.position = 'absolute';
+            highlight.style.left = data.left + 'px';
+            highlight.style.top = data.top + 'px';
+            highlight.style.width = data.width + 'px';
+            highlight.style.height = data.height + 'px';
+            
+            fragment.appendChild(highlight);
+            this.lastHighlightedElements.push(highlight);
+        });
+        
+        // 一次性添加所有高亮元素
+        this.highlightOverlay.appendChild(fragment);
+    }
+    
+    // Beta v2.9 - 清除文本高亮（v91性能优化）
     clearTextHighlight() {
         if (this.highlightOverlay) {
-            this.highlightOverlay.innerHTML = '';
+            // 性能优化：直接移除已知元素而非innerHTML清空
+            if (this.lastHighlightedElements && this.lastHighlightedElements.length > 0) {
+                this.lastHighlightedElements.forEach(element => {
+                    if (element.parentNode) {
+                        element.parentNode.removeChild(element);
+                    }
+                });
+                this.lastHighlightedElements = [];
+            } else {
+                // 降级处理
+                this.highlightOverlay.innerHTML = '';
+            }
         }
         this.currentHighlightedText = null;
     }
@@ -2919,11 +2953,11 @@ class PDFReader {
     // 超级模糊文本匹配函数
     findTextWithFuzzyMatch(fullText, searchText) {
         if (!fullText || !searchText) {
-            console.log('❌ 输入为空:', { fullText: !!fullText, searchText: !!searchText });
+            debugLog('❌ 输入为空:', { fullText: !!fullText, searchText: !!searchText });
             return { found: false, position: -1 };
         }
         
-        console.log('🔍 开始模糊匹配:', { 
+        debugLog('🔍 开始模糊匹配:', { 
             fullTextLength: fullText.length, 
             searchText: searchText.substring(0, 50) + '...' 
         });
@@ -2931,7 +2965,7 @@ class PDFReader {
         // 1. 首先尝试精确匹配
         let position = fullText.indexOf(searchText);
         if (position !== -1) {
-            console.log('✅ 精确匹配成功');
+            debugLog('✅ 精确匹配成功');
             return { found: true, position: position };
         }
         
@@ -2940,7 +2974,7 @@ class PDFReader {
         const cleanSearchText = searchText.replace(/[\s\n\r\t.,;:!?""''（）()【】\[\]]/g, '');
         position = cleanFullText.indexOf(cleanSearchText);
         if (position !== -1) {
-            console.log('✅ 超级清理匹配成功');
+            debugLog('✅ 超级清理匹配成功');
             // 简化位置计算，直接返回0（总是高亮第一个匹配）
             return { found: true, position: 0 };
         }
@@ -2950,7 +2984,7 @@ class PDFReader {
             const searchPrefix = cleanSearchText.substring(0, 15);
             position = cleanFullText.indexOf(searchPrefix);
             if (position !== -1) {
-                console.log('✅ 15字符前缀匹配成功');
+                debugLog('✅ 15字符前缀匹配成功');
                 return { found: true, position: 0 };
             }
         }
@@ -2960,7 +2994,7 @@ class PDFReader {
             const searchPrefix = cleanSearchText.substring(0, 10);
             position = cleanFullText.indexOf(searchPrefix);
             if (position !== -1) {
-                console.log('✅ 10字符前缀匹配成功');
+                debugLog('✅ 10字符前缀匹配成功');
                 return { found: true, position: 0 };
             }
         }
@@ -2970,7 +3004,7 @@ class PDFReader {
             const searchPrefix = cleanSearchText.substring(0, 5);
             position = cleanFullText.indexOf(searchPrefix);
             if (position !== -1) {
-                console.log('✅ 5字符前缀匹配成功');
+                debugLog('✅ 5字符前缀匹配成功');
                 return { found: true, position: 0 };
             }
         }
@@ -2981,19 +3015,19 @@ class PDFReader {
             for (const word of words) {
                 position = cleanFullText.indexOf(word);
                 if (position !== -1) {
-                    console.log('✅ 关键词匹配成功:', word);
+                    debugLog('✅ 关键词匹配成功:', word);
                     return { found: true, position: 0 };
                 }
             }
         }
         
-        console.log('❌ 所有模糊匹配都失败了:', { 
+        debugLog('❌ 所有模糊匹配都失败了:', { 
             cleanSearchText: cleanSearchText.substring(0, 30),
             cleanFullTextPreview: cleanFullText.substring(0, 100)
         });
         
         // 强制返回成功，总是高亮第一段
-        console.log('⚠️ 强制高亮第一段作为备选方案');
+        debugLog('⚠️ 强制高亮第一段作为备选方案');
         return { found: true, position: 0 };
     }
     
@@ -3062,17 +3096,17 @@ class PDFReader {
         if (!this.pdfDoc) return;
         
         try {
-            console.log('🔄 重试创建文本层...');
+            debugLog('🔄 重试创建文本层...');
             const page = await this.pdfDoc.getPage(this.pageNum);
             const viewport = page.getViewport({ scale: this.scale });
             await this.createTextLayer(page, viewport);
             
             // 重新尝试高亮
             if (this.textItems && this.textItems.length > 0) {
-                console.log('✅ 文本层重建成功，重新尝试高亮');
+                debugLog('✅ 文本层重建成功，重新尝试高亮');
                 this.highlightTextOnPage(text);
             } else {
-                console.log('❌ 文本层重建后仍然没有文本项');
+                debugLog('❌ 文本层重建后仍然没有文本项');
             }
         } catch (error) {
             console.error('❌ 重试创建文本层失败:', error);
